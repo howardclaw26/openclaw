@@ -117,6 +117,13 @@ describe("failover-error", () => {
         },
       }),
     ).toBeNull();
+    expect(
+      resolveFailoverReasonFromError({
+        status: 422,
+        message: "check open ai req parameter error",
+        cause: new Error("No response body"),
+      }),
+    ).toBeNull();
     // Transient server errors (500/502/503/504) should trigger failover as timeout.
     expect(resolveFailoverReasonFromError({ status: 500 })).toBe("timeout");
     expect(resolveFailoverReasonFromError({ status: 502 })).toBe("timeout");
@@ -261,6 +268,27 @@ describe("failover-error", () => {
         cause: { message: "invalid_api_key" },
       }),
     ).toBe("auth");
+  });
+
+  it("preserves parent provider context for wrapped billing signals", () => {
+    expect(
+      resolveFailoverReasonFromError({
+        provider: "openrouter",
+        status: 401,
+        cause: { message: "Key limit exceeded" },
+      }),
+    ).toBe("billing");
+  });
+
+  it("revisits shared nested errors when a later wrapper adds provider context", () => {
+    const shared = { message: "Key limit exceeded" };
+
+    expect(
+      resolveFailoverReasonFromError({
+        cause: { cause: shared },
+        error: { provider: "openrouter", cause: shared },
+      }),
+    ).toBe("billing");
   });
 
   it("classifies generic model-does-not-exist messages as model_not_found", () => {
@@ -786,5 +814,14 @@ describe("failover-error", () => {
     const described = describeFailoverError(123);
     expect(described.message).toBe("123");
     expect(described.reason).toBeUndefined();
+  });
+
+  it("does not recurse forever on mixed cause/error cycles", () => {
+    const first: { message: string; cause?: unknown } = { message: "wrapper" };
+    const second: { message: string; error?: unknown } = { message: "nested" };
+    first.cause = second;
+    second.error = first;
+
+    expect(resolveFailoverReasonFromError(first)).toBeNull();
   });
 });
