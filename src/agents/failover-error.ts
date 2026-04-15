@@ -1,6 +1,7 @@
 import { readErrorName } from "../infra/errors.js";
 import {
   classifyFailoverSignal,
+  isUnclassifiedNoBodyHttpSignal,
   type FailoverClassification,
   type FailoverSignal,
 } from "./pi-embedded-helpers/errors.js";
@@ -270,6 +271,13 @@ function resolveFailoverClassificationFromError(err: unknown): FailoverClassific
       const causeClassification = resolveFailoverClassificationFromError(candidate);
       if (causeClassification) {
         return causeClassification;
+      }
+      if (
+        classification?.kind === "reason" &&
+        classification.reason === "format" &&
+        isUnclassifiedNoBodyHttpSignal(normalizeDirectErrorSignal(candidate))
+      ) {
+        return null;
       }
     }
   }

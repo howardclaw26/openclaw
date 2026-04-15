@@ -358,6 +358,15 @@ function isExplicitNoBodyHttpMessage(raw: string | undefined, status?: number): 
   return NO_BODY_HTTP_WRAPPER_RE.test(trimmed);
 }
 
+export function isUnclassifiedNoBodyHttpSignal(signal: FailoverSignal): boolean {
+  const status = inferSignalStatus(signal);
+  if (status !== 400 && status !== 422) {
+    return false;
+  }
+  const message = signal.message?.trim();
+  return !message || isExplicitNoBodyHttpMessage(message, status);
+}
+
 function isHtmlErrorResponse(raw: string, status?: number): boolean {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -703,7 +712,7 @@ function classifyFailoverClassificationFromHttpStatus(
     // like "400 status code (no body)", return null instead of defaulting to
     // "format". These shapes are likely transient proxy issues — classifying
     // them as "format" triggers a compaction loop that cannot recover.
-    if (!message || message.trim().length === 0 || isExplicitNoBodyHttpMessage(message, status)) {
+    if (isUnclassifiedNoBodyHttpSignal({ status, message })) {
       return null;
     }
     // Body exists but couldn't be classified — still treat as format error
