@@ -9,6 +9,7 @@ import { isTimeoutErrorMessage } from "./pi-embedded-helpers/errors.js";
 import type { FailoverReason } from "./pi-embedded-helpers/types.js";
 
 const ABORT_TIMEOUT_RE = /request was aborted|request aborted/i;
+const MAX_FAILOVER_CAUSE_DEPTH = 25;
 
 export class FailoverError extends Error {
   readonly reason: FailoverReason;
@@ -252,7 +253,20 @@ function isNestedNoBodySignal(candidate: unknown, inheritedStatus: number | unde
   });
 }
 
-function resolveFailoverClassificationFromError(err: unknown): FailoverClassification | null {
+function resolveFailoverClassificationFromErrorInternal(
+  err: unknown,
+  seen: Set<object>,
+  depth: number,
+): FailoverClassification | null {
+  if (depth > MAX_FAILOVER_CAUSE_DEPTH) {
+    return null;
+  }
+  if (err && typeof err === "object") {
+    if (seen.has(err)) {
+      return null;
+    }
+    seen.add(err);
+  }
   if (isFailoverError(err)) {
     return {
       kind: "reason",
@@ -265,7 +279,11 @@ function resolveFailoverClassificationFromError(err: unknown): FailoverClassific
   const cause = getErrorCause(err);
 
   if ((!classification || classification.kind === "context_overflow") && cause && cause !== err) {
-    const causeClassification = resolveFailoverClassificationFromError(cause);
+    const causeClassification = resolveFailoverClassificationFromErrorInternal(
+      cause,
+      seen,
+      depth + 1,
+    );
     if (causeClassification) {
       return causeClassification;
     }
@@ -291,6 +309,10 @@ function resolveFailoverClassificationFromError(err: unknown): FailoverClassific
     };
   }
   return null;
+}
+
+function resolveFailoverClassificationFromError(err: unknown): FailoverClassification | null {
+  return resolveFailoverClassificationFromErrorInternal(err, new Set<object>(), 0);
 }
 
 export function resolveFailoverReasonFromError(err: unknown): FailoverReason | null {

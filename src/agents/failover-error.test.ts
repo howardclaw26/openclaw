@@ -154,6 +154,14 @@ describe("failover-error", () => {
     expect(resolveFailoverReasonFromError({ status: 529 })).toBe("overloaded");
   });
 
+  it("stops on cyclic cause chains", () => {
+    const first: { cause?: unknown } = {};
+    const second: { cause?: unknown } = { cause: first };
+    first.cause = second;
+
+    expect(resolveFailoverReasonFromError(first)).toBeNull();
+  });
+
   it("treats session-specific HTTP 410s differently from generic 410s", () => {
     expect(
       resolveFailoverReasonFromError({
