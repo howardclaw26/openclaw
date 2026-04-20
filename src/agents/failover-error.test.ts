@@ -128,6 +128,15 @@ describe("failover-error", () => {
       resolveFailoverReasonFromError({
         status: 422,
         message: "Unprocessable Entity",
+        error: {
+          message: "HTTP 422: No response body",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      resolveFailoverReasonFromError({
+        status: 422,
+        message: "Unprocessable Entity",
         cause: {},
       }),
     ).toBe("format");

@@ -231,11 +231,14 @@ function normalizeErrorSignal(err: unknown): FailoverSignal {
   };
 }
 
-function getErrorCause(err: unknown): unknown {
-  if (!err || typeof err !== "object" || !("cause" in err)) {
-    return undefined;
+function getNestedErrorCandidates(err: unknown): unknown[] {
+  if (!err || typeof err !== "object") {
+    return [];
   }
-  return (err as { cause?: unknown }).cause;
+  const candidate = err as { error?: unknown; cause?: unknown };
+  return [candidate.error, candidate.cause].filter(
+    (value): value is unknown => value !== undefined && value !== err,
+  );
 }
 
 function isFormatClassification(classification: FailoverClassification | null): boolean {
@@ -276,26 +279,27 @@ function resolveFailoverClassificationFromErrorInternal(
 
   const signal = normalizeErrorSignal(err);
   const classification = classifyFailoverSignal(signal);
-  const cause = getErrorCause(err);
+  const nestedCandidates = getNestedErrorCandidates(err);
 
-  if ((!classification || classification.kind === "context_overflow") && cause && cause !== err) {
-    const causeClassification = resolveFailoverClassificationFromErrorInternal(
-      cause,
-      seen,
-      depth + 1,
-    );
-    if (causeClassification) {
-      return causeClassification;
+  if (!classification || classification.kind === "context_overflow") {
+    for (const candidate of nestedCandidates) {
+      const nestedClassification = resolveFailoverClassificationFromErrorInternal(
+        candidate,
+        seen,
+        depth + 1,
+      );
+      if (nestedClassification) {
+        return nestedClassification;
+      }
     }
   }
 
-  if (
-    isFormatClassification(classification) &&
-    cause &&
-    cause !== err &&
-    isNestedNoBodySignal(cause, signal.status)
-  ) {
-    return null;
+  if (isFormatClassification(classification)) {
+    for (const candidate of nestedCandidates) {
+      if (isNestedNoBodySignal(candidate, signal.status)) {
+        return null;
+      }
+    }
   }
 
   if (classification) {
