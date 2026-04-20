@@ -230,6 +230,17 @@ function normalizeErrorSignal(err: unknown): FailoverSignal {
   };
 }
 
+function getErrorCause(err: unknown): unknown {
+  if (!err || typeof err !== "object" || !("cause" in err)) {
+    return undefined;
+  }
+  return (err as { cause?: unknown }).cause;
+}
+
+function isFormatClassification(classification: FailoverClassification | null): boolean {
+  return classification?.kind === "reason" && classification.reason === "format";
+}
+
 function normalizeDirectErrorSignal(err: unknown): FailoverSignal {
   const message = readDirectErrorMessage(err);
   return {
@@ -240,43 +251,6 @@ function normalizeDirectErrorSignal(err: unknown): FailoverSignal {
   };
 }
 
-type FailoverSignalContext = Pick<FailoverSignal, "provider" | "status">;
-
-function withInheritedProviderContext(
-  context: FailoverSignalContext,
-  signal: FailoverSignal,
-): FailoverSignal {
-  return {
-    provider: signal.provider ?? context.provider,
-    status: signal.status,
-    code: signal.code,
-    message: signal.message,
-  };
-}
-
-function getNestedErrorCandidates(err: unknown): unknown[] {
-  if (!err || typeof err !== "object") {
-    return [];
-  }
-  const candidate = err as { cause?: unknown; error?: unknown };
-  return [candidate.cause, candidate.error].filter(
-    (value): value is unknown => value !== undefined,
-  );
-}
-
-function shouldInspectNestedClassification(
-  classification: FailoverClassification | null,
-  messageClassification: FailoverClassification | null,
-): boolean {
-  return (
-    !classification || classification.kind === "context_overflow" || messageClassification === null
-  );
-}
-
-function isFormatClassification(classification: FailoverClassification | null): boolean {
-  return classification?.kind === "reason" && classification.reason === "format";
-}
-
 function isNestedNoBodySignal(candidate: unknown, inheritedStatus: number | undefined): boolean {
   const candidateSignal = normalizeDirectErrorSignal(candidate);
   return isUnclassifiedNoBodyHttpSignal({
@@ -285,91 +259,45 @@ function isNestedNoBodySignal(candidate: unknown, inheritedStatus: number | unde
   });
 }
 
-function resolveNestedFailoverOverride(
-  err: unknown,
-  nestedContext: FailoverSignalContext,
-  seen: WeakSet<object>,
-  classification: FailoverClassification | null,
-): FailoverClassification | null | undefined {
-  for (const candidate of getNestedErrorCandidates(err)) {
-    const nestedClassification = resolveFailoverClassificationFromError(
-      candidate,
-      nestedContext,
-      seen,
-    );
-    if (nestedClassification) {
-      return nestedClassification;
-    }
-    if (
-      isFormatClassification(classification) &&
-      isNestedNoBodySignal(candidate, nestedContext.status)
-    ) {
-      return null;
+function resolveFailoverClassificationFromError(err: unknown): FailoverClassification | null {
+  if (isFailoverError(err)) {
+    return {
+      kind: "reason",
+      reason: err.reason,
+    };
+  }
+
+  const signal = normalizeErrorSignal(err);
+  const classification = classifyFailoverSignal(signal);
+  const cause = getErrorCause(err);
+
+  if ((!classification || classification.kind === "context_overflow") && cause && cause !== err) {
+    const causeClassification = resolveFailoverClassificationFromError(cause);
+    if (causeClassification) {
+      return causeClassification;
     }
   }
-  return undefined;
-}
 
-function resolveFailoverClassificationFromError(
-  err: unknown,
-  context: FailoverSignalContext = {},
-  seen: WeakSet<object> = new WeakSet(),
-): FailoverClassification | null {
-  const isObject = Boolean(err && typeof err === "object");
-  const objectErr = isObject ? err : undefined;
-  if (err && typeof err === "object") {
-    if (seen.has(err)) {
-      return null;
-    }
-    seen.add(err);
-  }
-  try {
-    if (isFailoverError(err)) {
-      return {
-        kind: "reason",
-        reason: err.reason,
-      };
-    }
-
-    const directSignal = withInheritedProviderContext(context, normalizeDirectErrorSignal(err));
-    const messageClassification = directSignal.message
-      ? classifyFailoverSignal({
-          message: directSignal.message,
-          provider: directSignal.provider,
-        })
-      : null;
-    const classification = classifyFailoverSignal(directSignal);
-    if (shouldInspectNestedClassification(classification, messageClassification)) {
-      const nestedOverride = resolveNestedFailoverOverride(
-        err,
-        {
-          status: directSignal.status,
-          provider: directSignal.provider,
-        },
-        seen,
-        classification,
-      );
-      if (nestedOverride !== undefined) {
-        return nestedOverride;
-      }
-    }
-
-    if (classification) {
-      return classification;
-    }
-
-    if (isTimeoutError(err)) {
-      return {
-        kind: "reason",
-        reason: "timeout",
-      };
-    }
+  if (
+    isFormatClassification(classification) &&
+    cause &&
+    cause !== err &&
+    isNestedNoBodySignal(cause, signal.status)
+  ) {
     return null;
-  } finally {
-    if (objectErr) {
-      seen.delete(objectErr);
-    }
   }
+
+  if (classification) {
+    return classification;
+  }
+
+  if (isTimeoutError(err)) {
+    return {
+      kind: "reason",
+      reason: "timeout",
+    };
+  }
+  return null;
 }
 
 export function resolveFailoverReasonFromError(err: unknown): FailoverReason | null {
