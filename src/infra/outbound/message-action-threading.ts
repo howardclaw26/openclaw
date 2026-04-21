@@ -4,6 +4,7 @@ import type {
   ChannelThreadingAdapter,
   ChannelThreadingToolContext,
 } from "../../channels/plugins/types.public.js";
+import type { ReplyToMode } from "../../config/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type {
   OutboundSessionRoute,
@@ -57,43 +58,151 @@ function isSameConversationTarget(
   return explicitTarget.trim() === currentChannelId;
 }
 
+export type OutboundReplyToResolutionDebug = {
+  explicitReplyToId?: string;
+  sameConversationTarget: boolean;
+  currentMessageId?: string;
+  replyToMode: ReplyToMode;
+  hasReplied: boolean | null;
+  reason:
+    | "explicit"
+    | "different-conversation"
+    | "missing-current-message"
+    | "mode-off"
+    | "mode-batched"
+    | "already-replied"
+    | "empty-current-message"
+    | "implicit";
+  resolvedReplyToId?: string;
+};
+
+export function inspectOutboundReplyToIdResolution(
+  actionParams: Record<string, unknown>,
+  context: {
+    toolContext?: ChannelThreadingToolContext;
+  },
+): OutboundReplyToResolutionDebug {
+  const explicitReplyToId = readStringParam(actionParams, "replyTo");
+  const currentMessageId =
+    context.toolContext?.currentMessageId == null
+      ? undefined
+      : typeof context.toolContext.currentMessageId === "number"
+        ? String(context.toolContext.currentMessageId)
+        : context.toolContext.currentMessageId;
+  if (explicitReplyToId) {
+    return {
+      explicitReplyToId,
+      sameConversationTarget: isSameConversationTarget(actionParams, context.toolContext),
+      currentMessageId,
+      replyToMode: context.toolContext?.replyToMode ?? "off",
+      hasReplied:
+        typeof context.toolContext?.hasRepliedRef?.value === "boolean"
+          ? context.toolContext.hasRepliedRef.value
+          : null,
+      reason: "explicit",
+      resolvedReplyToId: explicitReplyToId,
+    };
+  }
+
+  const sameConversationTarget = isSameConversationTarget(actionParams, context.toolContext);
+  const replyToMode = context.toolContext?.replyToMode ?? "off";
+  const hasReplied =
+    typeof context.toolContext?.hasRepliedRef?.value === "boolean"
+      ? context.toolContext.hasRepliedRef.value
+      : null;
+
+  if (!sameConversationTarget) {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "different-conversation",
+    };
+  }
+
+  if (currentMessageId == null) {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "missing-current-message",
+    };
+  }
+
+  if (replyToMode === "off") {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "mode-off",
+    };
+  }
+
+  if (replyToMode === "batched") {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "mode-batched",
+    };
+  }
+
+  if (replyToMode === "first" && context.toolContext?.hasRepliedRef?.value) {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "already-replied",
+    };
+  }
+
+  const resolvedReplyToId =
+    typeof currentMessageId === "number" ? String(currentMessageId) : currentMessageId.trim();
+  if (!resolvedReplyToId) {
+    return {
+      sameConversationTarget,
+      currentMessageId,
+      replyToMode,
+      hasReplied,
+      reason: "empty-current-message",
+    };
+  }
+
+  return {
+    sameConversationTarget,
+    currentMessageId,
+    replyToMode,
+    hasReplied,
+    reason: "implicit",
+    resolvedReplyToId,
+  };
+}
+
 export function resolveAndApplyOutboundReplyToId(
   actionParams: Record<string, unknown>,
   context: {
     toolContext?: ChannelThreadingToolContext;
   },
 ): string | undefined {
-  const explicitReplyToId = readStringParam(actionParams, "replyTo");
-  if (explicitReplyToId) {
-    return explicitReplyToId;
+  const inspection = inspectOutboundReplyToIdResolution(actionParams, context);
+  if (inspection.reason === "explicit") {
+    return inspection.resolvedReplyToId;
   }
-
-  if (!isSameConversationTarget(actionParams, context.toolContext)) {
+  if (inspection.reason !== "implicit") {
     return undefined;
   }
-
-  const currentMessageId = context.toolContext?.currentMessageId;
-  if (currentMessageId == null) {
-    return undefined;
-  }
-
-  const mode = context.toolContext?.replyToMode ?? "off";
-  if (mode === "off" || mode === "batched") {
-    return undefined;
-  }
-
-  if (mode === "first") {
+  if (inspection.replyToMode === "first") {
     const hasRepliedRef = context.toolContext?.hasRepliedRef;
-    if (hasRepliedRef?.value) {
-      return undefined;
-    }
     if (hasRepliedRef) {
       hasRepliedRef.value = true;
     }
   }
-
-  const resolvedReplyToId =
-    typeof currentMessageId === "number" ? String(currentMessageId) : currentMessageId.trim();
+  const resolvedReplyToId = inspection.resolvedReplyToId;
   if (!resolvedReplyToId) {
     return undefined;
   }

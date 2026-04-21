@@ -4,6 +4,7 @@ import type {
   WAPresence,
 } from "@whiskeysockets/baileys";
 import { recordChannelActivity } from "openclaw/plugin-sdk/infra-runtime";
+import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { buildQuotedMessageOptions } from "../quoted-message.js";
 import { toWhatsappJid } from "../text-runtime.js";
 import type { ActiveWebSendOptions } from "./types.js";
@@ -82,6 +83,22 @@ export function createWebSendApi(params: {
         participant: sendOptions?.quotedMessageKey?.participant,
         messageText: sendOptions?.quotedMessageKey?.messageText,
       });
+      if (sendOptions?.quotedMessageKey) {
+        const quoted = quotedOpts?.quoted as
+          | {
+              key?: {
+                id?: string;
+                remoteJid?: string;
+                fromMe?: boolean;
+                participant?: string;
+              };
+              participant?: string;
+            }
+          | undefined;
+        logVerbose(
+          `WhatsApp send-api quote debug: to=${to} accountId=${sendOptions.accountId ?? params.defaultAccountId} quotedMessageKeyId=${sendOptions.quotedMessageKey.id} inputRemoteJid=${sendOptions.quotedMessageKey.remoteJid} builtQuoted=${quoted ? "yes" : "no"} builtQuotedId=${quoted?.key?.id ?? "none"} builtQuotedRemoteJid=${quoted?.key?.remoteJid ?? "none"} builtQuotedFromMe=${quoted?.key?.fromMe ?? false} builtQuotedParticipant=${quoted?.participant ?? quoted?.key?.participant ?? "none"} hasQuotedText=${sendOptions.quotedMessageKey.messageText ? "yes" : "no"}`,
+        );
+      }
       const result = quotedOpts
         ? await params.sock.sendMessage(jid, payload, quotedOpts)
         : await params.sock.sendMessage(jid, payload);

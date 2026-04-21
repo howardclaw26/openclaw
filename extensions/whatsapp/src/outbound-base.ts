@@ -10,6 +10,7 @@ import {
 } from "openclaw/plugin-sdk/channel-send-result";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { resolveOutboundSendDep, sanitizeForPlainText } from "openclaw/plugin-sdk/infra-runtime";
+import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { WHATSAPP_LEGACY_OUTBOUND_SEND_DEP_KEYS } from "./outbound-send-deps.js";
 import { lookupInboundMessageMeta } from "./quoted-message.js";
 import { toWhatsappJid } from "./text-runtime.js";
@@ -56,10 +57,7 @@ type CreateWhatsAppOutboundBaseParams = {
   skipEmptyText?: boolean;
 };
 
-function resolveQuoteLookupAccountId(
-  cfg: OpenClawConfig | undefined,
-  accountId?: string | null,
-): string {
+function resolveQuoteLookupAccountId(cfg?: OpenClawConfig, accountId?: string | null): string {
   const explicitAccountId = accountId?.trim();
   if (explicitAccountId) {
     return explicitAccountId;
@@ -131,6 +129,11 @@ export function createWhatsAppOutboundBase({
               messageText: cachedMeta?.body,
             }
           : undefined;
+        if (replyToId) {
+          logVerbose(
+            `WhatsApp outbound quote debug: to=${to} accountId=${accountId ?? "default"} replyToId=${replyToId} participant=${quotedMessageKey?.participant ?? "none"} hasBody=${quotedMessageKey?.messageText ? "yes" : "no"}`,
+          );
+        }
         return await send(to, normalizedText, {
           verbose: false,
           cfg,
@@ -173,13 +176,17 @@ export function createWhatsAppOutboundBase({
                   toWhatsappJid(to),
                   replyToId,
                 );
-                return {
+                const quotedMessageKey = {
                   id: replyToId,
                   remoteJid: toWhatsappJid(to),
                   fromMe: false,
                   participant: cachedMeta?.participant,
                   messageText: cachedMeta?.body,
                 };
+                logVerbose(
+                  `WhatsApp outbound media quote debug: to=${to} accountId=${accountId ?? "default"} replyToId=${replyToId} participant=${quotedMessageKey.participant ?? "none"} hasBody=${quotedMessageKey.messageText ? "yes" : "no"}`,
+                );
+                return quotedMessageKey;
               })()
             : undefined,
         });
