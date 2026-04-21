@@ -1,9 +1,12 @@
 import { chunkText } from "openclaw/plugin-sdk/reply-chunking";
 import { createWhatsAppOutboundBase } from "./outbound-base.js";
-import { normalizeWhatsAppOutboundPayload } from "./outbound-media-contract.js";
 import { resolveWhatsAppOutboundTarget } from "./resolve-outbound-target.js";
 import { getWhatsAppRuntime } from "./runtime.js";
 import { sendMessageWhatsApp, sendPollWhatsApp } from "./send.js";
+
+export function normalizeWhatsAppChannelPayloadText(text: string | undefined): string {
+  return (text ?? "").replace(/^(?:[ \t]*\r?\n)+/, "");
+}
 
 export const whatsappChannelOutbound = {
   ...createWhatsAppOutboundBase({
@@ -14,6 +17,8 @@ export const whatsappChannelOutbound = {
     resolveTarget: ({ to, allowFrom, mode }) =>
       resolveWhatsAppOutboundTarget({ to, allowFrom, mode }),
   }),
-  normalizePayload: ({ payload }: { payload: { text?: string } }) =>
-    normalizeWhatsAppOutboundPayload(payload),
+  normalizePayload: ({ payload }: { payload: { text?: string } }) => ({
+    ...payload,
+    text: normalizeWhatsAppChannelPayloadText(payload.text),
+  }),
 };
