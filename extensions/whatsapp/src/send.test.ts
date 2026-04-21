@@ -158,6 +158,15 @@ describe("web outbound", () => {
     expect(sendMessage).toHaveBeenLastCalledWith("+1555", "caption", buf, "image/jpeg");
   });
 
+  it("preserves intentional indentation when the caller opts out of transport trimming", async () => {
+    await sendMessageWhatsApp("+1555", "    indented", {
+      verbose: false,
+      preserveLeadingWhitespace: true,
+    });
+
+    expect(sendMessage).toHaveBeenLastCalledWith("+1555", "    indented", undefined, undefined);
+  });
+
   it("skips whitespace-only text sends without media", async () => {
     const result = await sendMessageWhatsApp("+1555", "\n \t", { verbose: false });
 

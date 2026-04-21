@@ -41,15 +41,19 @@ export function resolveWhatsAppOutboundMediaUrls(
 // Keep new WhatsApp outbound-media behavior in this helper so payload, gateway, and auto-reply paths stay aligned.
 export function normalizeWhatsAppOutboundPayload<T extends WhatsAppOutboundPayloadLike>(
   payload: T,
+  options?: {
+    normalizeText?: (text: string | undefined) => string;
+  },
 ): Omit<T, "text" | "mediaUrl" | "mediaUrls"> & {
   text: string;
   mediaUrl?: string;
   mediaUrls?: string[];
 } {
   const mediaUrls = resolveWhatsAppOutboundMediaUrls(payload);
+  const normalizeText = options?.normalizeText ?? normalizeWhatsAppPayloadText;
   return {
     ...payload,
-    text: normalizeWhatsAppPayloadText(payload.text),
+    text: normalizeText(payload.text),
     mediaUrl: mediaUrls[0],
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
   };

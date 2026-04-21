@@ -24,6 +24,7 @@ type WhatsAppSendTextOptions = {
   mediaReadFile?: (filePath: string) => Promise<Buffer>;
   gifPlayback?: boolean;
   accountId?: string;
+  preserveLeadingWhitespace?: boolean;
 };
 type WhatsAppSendMessage = (
   to: string,
@@ -150,7 +151,7 @@ export function createWhatsAppOutboundBase({
         channel: "whatsapp",
         ctx: {
           ...ctx,
-          payload: normalizeWhatsAppOutboundPayload(ctx.payload),
+          payload: normalizeWhatsAppOutboundPayload(ctx.payload, { normalizeText }),
         },
         adapter: outbound,
       }),

@@ -67,9 +67,10 @@ export async function sendMessageWhatsApp(
     mediaReadFile?: (filePath: string) => Promise<Buffer>;
     gifPlayback?: boolean;
     accountId?: string;
+    preserveLeadingWhitespace?: boolean;
   },
 ): Promise<{ messageId: string; toJid: string }> {
-  let text = normalizeWhatsAppPayloadText(body);
+  let text = options.preserveLeadingWhitespace ? body : normalizeWhatsAppPayloadText(body);
   const jid = toWhatsappJid(to);
   const mediaUrls = resolveWhatsAppOutboundMediaUrls(options);
   const primaryMediaUrl = mediaUrls[0];

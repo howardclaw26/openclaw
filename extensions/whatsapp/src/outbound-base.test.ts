@@ -132,6 +132,39 @@ describe("createWhatsAppOutboundBase", () => {
     );
   });
 
+  it("uses the caller-provided text normalization for payload delivery", async () => {
+    const sendMessageWhatsApp = vi.fn(async () => ({
+      messageId: "msg-1",
+      toJid: "15551234567@s.whatsapp.net",
+    }));
+    const outbound = createWhatsAppOutboundBase({
+      chunker: (text) => [text],
+      sendMessageWhatsApp,
+      sendPollWhatsApp: vi.fn(),
+      shouldLogVerbose: () => false,
+      resolveTarget: ({ to }) => ({ ok: true as const, to: to ?? "" }),
+      normalizeText: (text) => (text ?? "").replace(/^(?:[ \t]*\r?\n)+/, ""),
+    });
+
+    await outbound.sendPayload!({
+      cfg: {} as never,
+      to: "whatsapp:+15551234567",
+      text: "",
+      payload: {
+        text: "\n \n    indented",
+      },
+      deps: { sendWhatsApp: sendMessageWhatsApp },
+    });
+
+    expect(sendMessageWhatsApp).toHaveBeenCalledWith(
+      "whatsapp:+15551234567",
+      "    indented",
+      expect.objectContaining({
+        verbose: false,
+      }),
+    );
+  });
+
   it("threads cfg into sendPollWhatsApp call", async () => {
     const sendPollWhatsApp = vi.fn(async () => ({
       messageId: "wa-poll-1",
