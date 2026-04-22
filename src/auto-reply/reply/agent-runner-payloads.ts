@@ -156,13 +156,6 @@ export async function buildReplyPayloads(params: {
       }),
     )
   ).filter(isRenderablePayload);
-  logVerbose(
-    `reply payload threading debug: mode=${params.replyToMode} channel=${params.replyToChannel ?? "unknown"} currentMessageId=${params.currentMessageId ?? "none"} sanitizedReplyToIds=${sanitizedPayloads
-      .map((payload) => payload.replyToId ?? "-")
-      .join(",")} threadedReplyToIds=${replyTaggedPayloads
-      .map((payload) => payload.replyToId ?? "-")
-      .join(",")}`,
-  );
   const silentFilteredPayloads = params.silentExpected ? [] : replyTaggedPayloads;
 
   // Drop final payloads only when block streaming succeeded end-to-end.

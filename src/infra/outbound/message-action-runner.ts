@@ -15,7 +15,6 @@ import type {
 } from "../../channels/plugins/types.public.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { hasInteractiveReplyBlocks, hasReplyPayloadContent } from "../../interactive/payload.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { OutboundMediaAccess } from "../../media/load-options.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { resolveAgentScopedOutboundMediaAccess } from "../../media/read-capability.js";
@@ -56,7 +55,6 @@ import {
   resolveExtraActionMediaSourceParamKeys,
 } from "./message-action-params.js";
 import {
-  inspectOutboundReplyToIdResolution,
   prepareOutboundMirrorRoute,
   resolveAndApplyOutboundReplyToId,
   resolveAndApplyOutboundThreadId,
@@ -73,8 +71,6 @@ import { executePollAction, executeSendAction } from "./outbound-send-service.js
 import { ensureOutboundSessionEntry, resolveOutboundSessionRoute } from "./outbound-session.js";
 import { resolveChannelTarget, type ResolvedMessagingTarget } from "./target-resolver.js";
 import { extractToolPayload } from "./tool-payload.js";
-
-const log = createSubsystemLogger("outbound/message-action");
 
 export type MessageActionRunnerGateway = {
   url?: string;
@@ -570,15 +566,9 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
   const bestEffort = readBooleanParam(params, "bestEffort");
   const silent = readBooleanParam(params, "silent");
 
-  const replyToInspection = inspectOutboundReplyToIdResolution(params, {
-    toolContext: input.toolContext,
-  });
   const replyToId = resolveAndApplyOutboundReplyToId(params, {
     toolContext: input.toolContext,
   });
-  log.info(
-    `message action reply-threading: channel=${channel} to=${to} action=${action} explicitReplyTo=${replyToInspection.explicitReplyToId ?? "none"} resolvedReplyToId=${replyToId ?? "none"} reason=${replyToInspection.reason} sameConversation=${replyToInspection.sameConversationTarget} currentChannelId=${input.toolContext?.currentChannelId ?? "none"} currentMessageId=${input.toolContext?.currentMessageId ?? "none"} replyToMode=${input.toolContext?.replyToMode ?? "none"} hasReplied=${typeof input.toolContext?.hasRepliedRef?.value === "boolean" ? String(input.toolContext.hasRepliedRef.value) : "none"}`,
-  );
   const { resolvedThreadId, outboundRoute } = await prepareOutboundMirrorRoute({
     cfg,
     channel,

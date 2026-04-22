@@ -1,5 +1,4 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PollInput } from "../../polls.js";
 import { normalizePollInput } from "../../polls.js";
 import {
@@ -28,8 +27,6 @@ let messageConfigRuntimePromise: Promise<typeof import("./message.config.runtime
   null;
 let messageGatewayRuntimePromise: Promise<typeof import("./message.gateway.runtime.js")> | null =
   null;
-
-const log = createSubsystemLogger("outbound/message");
 
 function loadMessageConfigRuntime() {
   messageConfigRuntimePromise ??= import("./message.config.runtime.js");
@@ -322,9 +319,6 @@ export async function sendMessage(params: MessageSendParams): Promise<MessageSen
     };
   }
 
-  log.info(
-    `gateway send request: channel=${channel} to=${params.to} accountId=${params.accountId ?? "none"} replyToId=${params.replyToId ?? "none"} threadId=${params.threadId ?? "none"} hasMedia=${params.mediaUrl || (params.mediaUrls?.length ?? 0) > 0 ? "yes" : "no"}`,
-  );
   const result = await callMessageGateway<{ messageId: string }>({
     gateway: params.gateway,
     method: "send",

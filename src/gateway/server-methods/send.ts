@@ -20,7 +20,6 @@ import { buildOutboundSessionContext } from "../../infra/outbound/session-contex
 import { maybeResolveIdLikeTarget } from "../../infra/outbound/target-resolver.js";
 import { resolveOutboundTarget } from "../../infra/outbound/targets.js";
 import { extractToolPayload } from "../../infra/outbound/tool-payload.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizePollInput } from "../../polls.js";
 import {
   normalizeOptionalLowercaseString,
@@ -45,8 +44,6 @@ type InflightResult = {
   error?: ReturnType<typeof errorShape>;
   meta?: Record<string, unknown>;
 };
-
-const log = createSubsystemLogger("gateway/send");
 
 const inflightByContext = new WeakMap<
   GatewayRequestContext,
@@ -468,9 +465,6 @@ export const sendHandlers: GatewayRequestHandlers = {
           accountId,
         });
         const deliveryTarget = idLikeTarget?.to ?? resolvedTarget.to;
-        log.info(
-          `gateway send resolved delivery: channel=${outboundChannel} to=${to} deliveryTarget=${deliveryTarget} accountId=${accountId ?? "none"} replyToId=${replyToId ?? "none"} threadId=${threadId ?? "none"}`,
-        );
         const outboundDeps = context.deps ? createOutboundSendDeps(context.deps) : undefined;
         const outboundPayloads = [{ text: message, mediaUrl, mediaUrls }];
         const outboundPayloadPlan = createOutboundPayloadPlan(outboundPayloads);

@@ -224,34 +224,21 @@ function createPluginHandler(
             mediaUrl,
           })
       : undefined,
-    sendText: async (text, overrides) => {
-      const resolvedCtx = resolveCtx(overrides);
-      if (params.channel === "whatsapp") {
-        log.info(
-          `plugin outbound sendText: channel=${params.channel} to=${params.to} baseReplyToId=${baseCtx.replyToId ?? "none"} overrideReplyToId=${overrides?.replyToId ?? "none"} effectiveReplyToId=${resolvedCtx.replyToId ?? "none"} effectiveThreadId=${resolvedCtx.threadId ?? "none"} textLen=${text.length}`,
-        );
-      }
-      return sendText({
-        ...resolvedCtx,
+    sendText: async (text, overrides) =>
+      sendText({
+        ...resolveCtx(overrides),
         text,
-      });
-    },
+      }),
     sendMedia: async (caption, mediaUrl, overrides) => {
-      const resolvedCtx = resolveCtx(overrides);
-      if (params.channel === "whatsapp") {
-        log.info(
-          `plugin outbound sendMedia: channel=${params.channel} to=${params.to} baseReplyToId=${baseCtx.replyToId ?? "none"} overrideReplyToId=${overrides?.replyToId ?? "none"} effectiveReplyToId=${resolvedCtx.replyToId ?? "none"} effectiveThreadId=${resolvedCtx.threadId ?? "none"} mediaUrl=${mediaUrl}`,
-        );
-      }
       if (sendMedia) {
         return sendMedia({
-          ...resolvedCtx,
+          ...resolveCtx(overrides),
           text: caption,
           mediaUrl,
         });
       }
       return sendText({
-        ...resolvedCtx,
+        ...resolveCtx(overrides),
         text: caption,
       });
     },
@@ -658,9 +645,6 @@ async function deliverOutboundPayloadsCore(
     }
   };
   const normalizedPayloads = normalizePayloadsForChannelDelivery(outboundPayloadPlan, handler);
-  log.info(
-    `deliverOutboundPayloadsCore start: channel=${channel} to=${to} accountId=${accountId ?? "none"} paramsReplyToId=${params.replyToId ?? "none"} paramsThreadId=${params.threadId ?? "none"} payloadCount=${normalizedPayloads.length} payloadReplyToIds=${normalizedPayloads.map((payload) => payload.replyToId ?? "-").join(",")}`,
-  );
   const hookRunner = getGlobalHookRunner();
   const sessionKeyForInternalHooks = params.mirror?.sessionKey ?? params.session?.key;
   const mirrorIsGroup = params.mirror?.isGroup;
@@ -713,9 +697,6 @@ async function deliverOutboundPayloadsCore(
         audioAsVoice: effectivePayload.audioAsVoice === true ? true : undefined,
         forceDocument: params.forceDocument,
       };
-      log.info(
-        `deliverOutboundPayloadsCore payload: channel=${channel} to=${to} textLen=${payloadSummary.text.length} mediaCount=${payloadSummary.mediaUrls.length} effectivePayloadReplyToId=${effectivePayload.replyToId ?? "none"} sendOverrideReplyToId=${sendOverrides.replyToId ?? "none"} sendOverrideThreadId=${sendOverrides.threadId ?? "none"}`,
-      );
       if (
         handler.sendPayload &&
         hasReplyPayloadContent({

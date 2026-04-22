@@ -10,7 +10,6 @@ import {
 } from "openclaw/plugin-sdk/channel-send-result";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { resolveOutboundSendDep, sanitizeForPlainText } from "openclaw/plugin-sdk/infra-runtime";
-import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { WHATSAPP_LEGACY_OUTBOUND_SEND_DEP_KEYS } from "./outbound-send-deps.js";
 import { lookupInboundMessageMeta } from "./quoted-message.js";
 import { toWhatsappJid } from "./text-runtime.js";
@@ -129,9 +128,6 @@ export function createWhatsAppOutboundBase({
               messageText: cachedMeta?.body,
             }
           : undefined;
-        logVerbose(
-          `WhatsApp outbound adapter sendText: to=${to} accountId=${accountId ?? "default"} replyToId=${replyToId ?? "none"} lookupAccountId=${lookupAccountId} quotedBuilt=${quotedMessageKey ? "yes" : "no"} participant=${quotedMessageKey?.participant ?? "none"} hasBody=${quotedMessageKey?.messageText ? "yes" : "no"}`,
-        );
         return await send(to, normalizedText, {
           verbose: false,
           cfg,
@@ -174,9 +170,6 @@ export function createWhatsAppOutboundBase({
               };
             })()
           : undefined;
-        logVerbose(
-          `WhatsApp outbound adapter sendMedia: to=${to} accountId=${accountId ?? "default"} replyToId=${replyToId ?? "none"} lookupAccountId=${lookupAccountId} quotedBuilt=${quotedMessageKey ? "yes" : "no"} participant=${quotedMessageKey?.participant ?? "none"} hasBody=${quotedMessageKey?.messageText ? "yes" : "no"} mediaUrl=${mediaUrl ?? "none"}`,
-        );
         return await send(to, normalizeText(text), {
           verbose: false,
           cfg,
