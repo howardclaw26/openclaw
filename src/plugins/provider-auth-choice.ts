@@ -6,9 +6,11 @@ import {
 } from "../agents/agent-scope.js";
 import { upsertAuthProfile } from "../agents/auth-profiles.js";
 import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace.js";
+import { ensureOnboardingPluginInstalled } from "../commands/onboarding-plugin-install.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
+import { clearPluginDiscoveryCache } from "./discovery.js";
 import { enablePluginInConfig } from "./enable.js";
 import {
   applyProviderAuthConfigPatch,
@@ -17,6 +19,7 @@ import {
   resolveProviderMatch,
 } from "./provider-auth-choice-helpers.js";
 import { applyAuthProfileConfig } from "./provider-auth-helpers.js";
+import { resolveProviderInstallCatalogEntry } from "./provider-install-catalog.js";
 import { createVpsAwareOAuthHandlers } from "./provider-oauth-flow.js";
 import { isRemoteEnvironment, openUrl } from "./setup-browser.js";
 import type { ProviderAuthMethod, ProviderAuthOptionBag } from "./types.js";
@@ -189,24 +192,75 @@ export async function applyAuthChoiceLoadedPluginProvider(
   const agentId = params.agentId ?? resolveDefaultAgentId(params.config);
   const workspaceDir =
     resolveAgentWorkspaceDir(params.config, agentId) ?? resolveDefaultAgentWorkspaceDir();
+  let nextConfig = params.config;
+  let enabledConfig = params.config;
   const { resolvePluginProviders, resolveProviderPluginChoice, runProviderModelSelectedHook } =
     await loadPluginProviderRuntime();
-  const providers = resolvePluginProviders({
-    config: params.config,
+  const installCatalogEntry = resolveProviderInstallCatalogEntry(params.authChoice, {
+    config: nextConfig,
+    workspaceDir,
+    env: params.env,
+    includeUntrustedWorkspacePlugins: false,
+  });
+  if (installCatalogEntry) {
+    const enableResult = enablePluginInConfig(nextConfig, installCatalogEntry.pluginId);
+    if (!enableResult.enabled) {
+      await params.prompter.note(
+        `${installCatalogEntry.label} plugin is disabled (${enableResult.reason ?? "blocked"}).`,
+        installCatalogEntry.label,
+      );
+      return { config: nextConfig };
+    }
+    enabledConfig = enableResult.config;
+  }
+
+  let providers = resolvePluginProviders({
+    config: enabledConfig,
     workspaceDir,
     env: params.env,
     mode: "setup",
   });
-  const resolved = resolveProviderPluginChoice({
+  let resolved = resolveProviderPluginChoice({
     providers,
     choice: params.authChoice,
   });
+  if (!resolved && installCatalogEntry) {
+    const installResult = await ensureOnboardingPluginInstalled({
+      cfg: enabledConfig,
+      entry: {
+        pluginId: installCatalogEntry.pluginId,
+        label: installCatalogEntry.label,
+        install: installCatalogEntry.install,
+      },
+      prompter: params.prompter,
+      runtime: params.runtime,
+      workspaceDir,
+    });
+    if (!installResult.installed) {
+      return { config: nextConfig };
+    }
+    nextConfig = installResult.cfg;
+    clearPluginDiscoveryCache();
+    providers = resolvePluginProviders({
+      config: nextConfig,
+      workspaceDir,
+      env: params.env,
+      mode: "setup",
+    });
+    resolved = resolveProviderPluginChoice({
+      providers,
+      choice: params.authChoice,
+    });
+  }
   if (!resolved) {
     return null;
   }
+  if (nextConfig === params.config && enabledConfig !== params.config) {
+    nextConfig = enabledConfig;
+  }
 
   const applied = await runProviderPluginAuthMethod({
-    config: params.config,
+    config: nextConfig,
     env: params.env,
     runtime: params.runtime,
     prompter: params.prompter,
@@ -219,7 +273,7 @@ export async function applyAuthChoiceLoadedPluginProvider(
     opts: params.opts,
   });
 
-  let nextConfig = applied.config;
+  nextConfig = applied.config;
   let agentModelOverride: string | undefined;
   if (applied.defaultModel) {
     if (params.setDefaultModel) {

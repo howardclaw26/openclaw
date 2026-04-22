@@ -157,6 +157,13 @@ Example:
 | `minHostVersion`             | `string`             | Minimum supported OpenClaw version in the form `>=x.y.z`.                        |
 | `allowInvalidConfigRecovery` | `boolean`            | Lets bundled-plugin reinstall flows recover from specific stale-config failures. |
 
+Interactive onboarding also uses `openclaw.install` for install-on-demand
+surfaces. If your plugin exposes provider auth choices or channel setup/catalog
+metadata before runtime loads, onboarding can show that choice, prompt for npm
+vs local install, install or enable the plugin, then continue the selected
+flow. Keep the "what to show" metadata in `openclaw.plugin.json` and the "how
+to install it" metadata in `package.json`.
+
 If `minHostVersion` is set, install and manifest-registry loading both enforce
 it. Older hosts skip the plugin; invalid version strings are rejected.
 

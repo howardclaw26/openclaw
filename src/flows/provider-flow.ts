@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveProviderInstallCatalogEntries } from "../plugins/provider-install-catalog.js";
 import {
   resolveProviderModelPickerEntries,
   resolveProviderWizardOptions,
@@ -26,7 +27,7 @@ export type ProviderSetupFlowContribution = FlowContribution & {
   pluginId?: string;
   option: ProviderSetupFlowOption;
   onboardingScopes?: ProviderFlowScope[];
-  source: "runtime";
+  source: "runtime" | "install-catalog";
 };
 
 export type ProviderModelPickerFlowContribution = FlowContribution & {
@@ -63,6 +64,50 @@ function resolveProviderDocsById(params?: {
   );
 }
 
+function resolveInstallCatalogProviderSetupFlowContributions(params?: {
+  config?: OpenClawConfig;
+  workspaceDir?: string;
+  env?: NodeJS.ProcessEnv;
+  scope?: ProviderFlowScope;
+}): ProviderSetupFlowContribution[] {
+  const scope = params?.scope ?? DEFAULT_PROVIDER_FLOW_SCOPE;
+  return resolveProviderInstallCatalogEntries(params ?? {})
+    .filter((entry) => includesProviderFlowScope(entry.onboardingScopes, scope))
+    .map((entry) =>
+      Object.assign(
+        {
+          id: `provider:setup:${entry.choiceId}`,
+          kind: `provider` as const,
+          surface: `setup` as const,
+          providerId: entry.providerId,
+          pluginId: entry.pluginId,
+          option: {
+            value: entry.choiceId,
+            label: entry.choiceLabel,
+            ...(entry.choiceHint ? { hint: entry.choiceHint } : {}),
+            ...(entry.assistantPriority !== undefined
+              ? { assistantPriority: entry.assistantPriority }
+              : {}),
+            ...(entry.assistantVisibility
+              ? { assistantVisibility: entry.assistantVisibility }
+              : {}),
+            ...(entry.groupId && entry.groupLabel
+              ? {
+                  group: {
+                    id: entry.groupId,
+                    label: entry.groupLabel,
+                    ...(entry.groupHint ? { hint: entry.groupHint } : {}),
+                  },
+                }
+              : {}),
+          },
+        },
+        entry.onboardingScopes ? { onboardingScopes: [...entry.onboardingScopes] } : {},
+        { source: `install-catalog` as const },
+      ),
+    );
+}
+
 export function resolveProviderSetupFlowContributions(params?: {
   config?: OpenClawConfig;
   workspaceDir?: string;
@@ -71,41 +116,47 @@ export function resolveProviderSetupFlowContributions(params?: {
 }): ProviderSetupFlowContribution[] {
   const scope = params?.scope ?? DEFAULT_PROVIDER_FLOW_SCOPE;
   const docsByProvider = resolveProviderDocsById(params ?? {});
-  return sortFlowContributionsByLabel(
-    resolveProviderWizardOptions(params ?? {})
-      .filter((option) => includesProviderFlowScope(option.onboardingScopes, scope))
-      .map((option) =>
-        Object.assign(
-          {
-            id: `provider:setup:${option.value}`,
-            kind: `provider` as const,
-            surface: `setup` as const,
-            providerId: option.groupId,
-            option: {
-              value: option.value,
-              label: option.label,
-              ...(option.hint ? { hint: option.hint } : {}),
-              ...(option.assistantPriority !== undefined
-                ? { assistantPriority: option.assistantPriority }
-                : {}),
-              ...(option.assistantVisibility
-                ? { assistantVisibility: option.assistantVisibility }
-                : {}),
-              group: {
-                id: option.groupId,
-                label: option.groupLabel,
-                ...(option.groupHint ? { hint: option.groupHint } : {}),
-              },
-              ...(docsByProvider.get(option.groupId)
-                ? { docs: { path: docsByProvider.get(option.groupId)! } }
-                : {}),
+  const runtimeContributions = resolveProviderWizardOptions(params ?? {})
+    .filter((option) => includesProviderFlowScope(option.onboardingScopes, scope))
+    .map((option) =>
+      Object.assign(
+        {
+          id: `provider:setup:${option.value}`,
+          kind: `provider` as const,
+          surface: `setup` as const,
+          providerId: option.groupId,
+          option: {
+            value: option.value,
+            label: option.label,
+            ...(option.hint ? { hint: option.hint } : {}),
+            ...(option.assistantPriority !== undefined
+              ? { assistantPriority: option.assistantPriority }
+              : {}),
+            ...(option.assistantVisibility
+              ? { assistantVisibility: option.assistantVisibility }
+              : {}),
+            group: {
+              id: option.groupId,
+              label: option.groupLabel,
+              ...(option.groupHint ? { hint: option.groupHint } : {}),
             },
+            ...(docsByProvider.get(option.groupId)
+              ? { docs: { path: docsByProvider.get(option.groupId)! } }
+              : {}),
           },
-          option.onboardingScopes ? { onboardingScopes: [...option.onboardingScopes] } : {},
-          { source: `runtime` as const },
-        ),
+        },
+        option.onboardingScopes ? { onboardingScopes: [...option.onboardingScopes] } : {},
+        { source: `runtime` as const },
       ),
+    );
+  const seenOptionValues = new Set(
+    runtimeContributions.map((contribution) => contribution.option.value),
   );
+  const installCatalogContributions = resolveInstallCatalogProviderSetupFlowContributions({
+    ...params,
+    scope,
+  }).filter((contribution) => !seenOptionValues.has(contribution.option.value));
+  return sortFlowContributionsByLabel([...runtimeContributions, ...installCatalogContributions]);
 }
 
 export function resolveProviderModelPickerFlowEntries(params?: {
