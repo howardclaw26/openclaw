@@ -120,6 +120,9 @@ export async function emitResetCommandHooks(params: {
     const channel = params.ctx.OriginatingChannel || params.command.channel;
     const to = params.ctx.OriginatingTo || params.command.from || params.command.to;
     if (channel && to) {
+      logVerbose(
+        `reset hook routeReply: action=${params.action} messages=${hookEvent.messages.length} threadId=${params.ctx.MessageThreadId ?? "<none>"} replyToId=<none>`,
+      );
       const { routeReply } = await loadRouteReplyRuntime();
       await routeReply({
         payload: { text: hookEvent.messages.join("\n\n") },

@@ -390,6 +390,11 @@ export async function runPreparedReply(
         .filter(Boolean)
         .join("\n\n")
     : [inboundUserContext, baseBodyFinal].filter(Boolean).join("\n\n");
+  if (isBareSessionReset) {
+    logVerbose(
+      `reset startup producer path: action=${startupAction} command=${normalizedCommandBody || "<none>"} soft=${softResetTriggered} bare=${isBareNewOrReset}`,
+    );
+  }
   const hasUserBody = baseBodyFinal.trim().length > 0 || softResetTail.length > 0;
   const hasMediaAttachment = hasInboundMedia(sessionCtx) || (opts?.images?.length ?? 0) > 0;
   if (!hasUserBody && !hasMediaAttachment) {

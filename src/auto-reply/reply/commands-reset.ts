@@ -115,6 +115,9 @@ export async function maybeHandleResetCommand(
     });
     params.command.softResetTriggered = true;
     params.command.softResetTail = softReset.tail;
+    logVerbose(
+      `reset command fallthrough: action=soft-reset startupFollowup=true tail=${softReset.tail ? "yes" : "no"}`,
+    );
     return null;
   }
 
@@ -178,5 +181,8 @@ export async function maybeHandleResetCommand(
     previousSessionEntry: params.previousSessionEntry,
     workspaceDir: params.workspaceDir,
   });
+  logVerbose(
+    `reset command fallthrough: action=${commandAction} startupFollowup=true tail=${resetTail ? "yes" : "no"}`,
+  );
   return null;
 }
