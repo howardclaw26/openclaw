@@ -576,22 +576,9 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
   const replyToId = resolveAndApplyOutboundReplyToId(params, {
     toolContext: input.toolContext,
   });
-  log.info("message action reply-threading", {
-    channel,
-    to,
-    action,
-    explicitReplyTo: replyToInspection.explicitReplyToId ?? null,
-    resolvedReplyToId: replyToId ?? null,
-    replyToReason: replyToInspection.reason,
-    sameConversationTarget: replyToInspection.sameConversationTarget,
-    currentChannelId: input.toolContext?.currentChannelId ?? null,
-    currentMessageId: input.toolContext?.currentMessageId ?? null,
-    replyToMode: input.toolContext?.replyToMode ?? null,
-    hasReplied:
-      typeof input.toolContext?.hasRepliedRef?.value === "boolean"
-        ? input.toolContext.hasRepliedRef.value
-        : null,
-  });
+  log.info(
+    `message action reply-threading: channel=${channel} to=${to} action=${action} explicitReplyTo=${replyToInspection.explicitReplyToId ?? "none"} resolvedReplyToId=${replyToId ?? "none"} reason=${replyToInspection.reason} sameConversation=${replyToInspection.sameConversationTarget} currentChannelId=${input.toolContext?.currentChannelId ?? "none"} currentMessageId=${input.toolContext?.currentMessageId ?? "none"} replyToMode=${input.toolContext?.replyToMode ?? "none"} hasReplied=${typeof input.toolContext?.hasRepliedRef?.value === "boolean" ? String(input.toolContext.hasRepliedRef.value) : "none"}`,
+  );
   const { resolvedThreadId, outboundRoute } = await prepareOutboundMirrorRoute({
     cfg,
     channel,

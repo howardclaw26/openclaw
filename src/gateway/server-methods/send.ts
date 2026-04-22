@@ -468,14 +468,9 @@ export const sendHandlers: GatewayRequestHandlers = {
           accountId,
         });
         const deliveryTarget = idLikeTarget?.to ?? resolvedTarget.to;
-        log.info("gateway send resolved delivery", {
-          channel: outboundChannel,
-          to,
-          deliveryTarget,
-          accountId: accountId ?? null,
-          replyToId: replyToId ?? null,
-          threadId: threadId ?? null,
-        });
+        log.info(
+          `gateway send resolved delivery: channel=${outboundChannel} to=${to} deliveryTarget=${deliveryTarget} accountId=${accountId ?? "none"} replyToId=${replyToId ?? "none"} threadId=${threadId ?? "none"}`,
+        );
         const outboundDeps = context.deps ? createOutboundSendDeps(context.deps) : undefined;
         const outboundPayloads = [{ text: message, mediaUrl, mediaUrls }];
         const outboundPayloadPlan = createOutboundPayloadPlan(outboundPayloads);

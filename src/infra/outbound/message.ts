@@ -322,14 +322,9 @@ export async function sendMessage(params: MessageSendParams): Promise<MessageSen
     };
   }
 
-  log.info("gateway send request", {
-    channel,
-    to: params.to,
-    accountId: params.accountId ?? null,
-    replyToId: params.replyToId ?? null,
-    threadId: params.threadId ?? null,
-    hasMedia: Boolean(params.mediaUrl || (params.mediaUrls?.length ?? 0) > 0),
-  });
+  log.info(
+    `gateway send request: channel=${channel} to=${params.to} accountId=${params.accountId ?? "none"} replyToId=${params.replyToId ?? "none"} threadId=${params.threadId ?? "none"} hasMedia=${params.mediaUrl || (params.mediaUrls?.length ?? 0) > 0 ? "yes" : "no"}`,
+  );
   const result = await callMessageGateway<{ messageId: string }>({
     gateway: params.gateway,
     method: "send",
