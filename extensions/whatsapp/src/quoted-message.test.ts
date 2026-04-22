@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cacheInboundMessageMeta, lookupInboundMessageMeta } from "./quoted-message.js";
+import {
+  cacheInboundMessageMeta,
+  lookupInboundMessageMeta,
+  lookupInboundMessageMetaById,
+} from "./quoted-message.js";
 
 describe("quoted message metadata cache", () => {
   it("scopes cached metadata by account id", () => {
@@ -20,5 +24,19 @@ describe("quoted message metadata cache", () => {
       participant: "222@s.whatsapp.net",
       body: "hello from b",
     });
+  });
+
+  it("can recover the original remoteJid by account and message id", () => {
+    cacheInboundMessageMeta("account-c", "277038292303944@lid", "msg-2", {
+      participant: "5511976136970@s.whatsapp.net",
+      body: "hello from lid chat",
+    });
+
+    expect(lookupInboundMessageMetaById("account-c", "msg-2")).toEqual({
+      remoteJid: "277038292303944@lid",
+      participant: "5511976136970@s.whatsapp.net",
+      body: "hello from lid chat",
+    });
+    expect(lookupInboundMessageMetaById("missing", "msg-2")).toBeUndefined();
   });
 });

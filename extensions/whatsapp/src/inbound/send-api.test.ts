@@ -219,11 +219,11 @@ describe("createWebSendApi", () => {
     expect(sendMessage).toHaveBeenCalledWith("123@s.whatsapp.net", { text: "hello" });
   });
 
-  it("forces quoted replies to target the outbound chat jid", async () => {
+  it("preserves the quoted remoteJid provided by the outbound adapter", async () => {
     await api.sendMessage("+1555", "hello", undefined, undefined, {
       quotedMessageKey: {
         id: "quoted-1",
-        remoteJid: "9999@s.whatsapp.net",
+        remoteJid: "277038292303944@lid",
         fromMe: false,
         participant: "1234@s.whatsapp.net",
         messageText: "quoted body",
@@ -236,7 +236,7 @@ describe("createWebSendApi", () => {
       expect.objectContaining({
         quoted: expect.objectContaining({
           key: expect.objectContaining({
-            remoteJid: "1555@s.whatsapp.net",
+            remoteJid: "277038292303944@lid",
             id: "quoted-1",
           }),
         }),

@@ -5,6 +5,7 @@ export type QuotedMessageKey = {
   remoteJid: string;
   fromMe: boolean;
   participant?: string;
+  messageText?: string;
 };
 
 // ── Inbound message metadata cache ──────────────────────────────────────
@@ -14,6 +15,7 @@ export type QuotedMessageKey = {
 
 type QuotedMeta = { participant?: string; body?: string };
 type CacheEntry = QuotedMeta & { ts: number };
+type QuotedMetaLookup = QuotedMeta & { remoteJid: string };
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const MAX_ENTRIES = 500;
@@ -56,6 +58,33 @@ export function lookupInboundMessageMeta(
     return undefined;
   }
   return { participant: entry.participant, body: entry.body };
+}
+
+export function lookupInboundMessageMetaById(
+  accountId: string,
+  messageId: string,
+): QuotedMetaLookup | undefined {
+  if (!accountId || !messageId) {
+    return undefined;
+  }
+  const prefix = `${accountId}:`;
+  const suffix = `:${messageId}`;
+  for (const [cacheKey, entry] of cache.entries()) {
+    if (!cacheKey.startsWith(prefix) || !cacheKey.endsWith(suffix)) {
+      continue;
+    }
+    if (Date.now() - entry.ts > CACHE_TTL_MS) {
+      cache.delete(cacheKey);
+      continue;
+    }
+    const remoteJid = cacheKey.slice(prefix.length, cacheKey.length - suffix.length);
+    return {
+      remoteJid,
+      participant: entry.participant,
+      body: entry.body,
+    };
+  }
+  return undefined;
 }
 
 export function buildQuotedMessageOptions(params: {

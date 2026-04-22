@@ -77,7 +77,7 @@ export function createWebSendApi(params: {
       }
       const quotedOpts = buildQuotedMessageOptions({
         messageId: sendOptions?.quotedMessageKey?.id,
-        remoteJid: sendOptions?.quotedMessageKey?.id ? jid : undefined,
+        remoteJid: sendOptions?.quotedMessageKey?.remoteJid,
         fromMe: sendOptions?.quotedMessageKey?.fromMe,
         participant: sendOptions?.quotedMessageKey?.participant,
         messageText: sendOptions?.quotedMessageKey?.messageText,

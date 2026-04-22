@@ -203,6 +203,55 @@ describe("createWhatsAppOutboundBase", () => {
     );
   });
 
+  it("reuses the cached inbound remoteJid when the outbound target normalizes differently", async () => {
+    cacheInboundMessageMeta("default", "277038292303944@lid", "reply-lid", {
+      participant: "5511976136970@s.whatsapp.net",
+      body: "quoted from lid chat",
+    });
+    const sendMessageWhatsApp = vi.fn(async () => ({
+      messageId: "msg-lid",
+      toJid: "5511976136970@s.whatsapp.net",
+    }));
+    const outbound = createWhatsAppOutboundBase({
+      chunker: (text) => [text],
+      sendMessageWhatsApp,
+      sendPollWhatsApp: vi.fn(),
+      shouldLogVerbose: () => false,
+      resolveTarget: ({ to }) => ({ ok: true as const, to: to ?? "" }),
+    });
+
+    await outbound.sendText!({
+      cfg: {
+        channels: {
+          whatsapp: {
+            accounts: {
+              default: {},
+            },
+          },
+        },
+      } as never,
+      to: "whatsapp:+5511976136970",
+      text: "reply",
+      accountId: "default",
+      deps: { sendWhatsApp: sendMessageWhatsApp },
+      replyToId: "reply-lid",
+    });
+
+    expect(sendMessageWhatsApp).toHaveBeenCalledWith(
+      "whatsapp:+5511976136970",
+      "reply",
+      expect.objectContaining({
+        quotedMessageKey: {
+          id: "reply-lid",
+          remoteJid: "277038292303944@lid",
+          fromMe: false,
+          participant: "5511976136970@s.whatsapp.net",
+          messageText: "quoted from lid chat",
+        },
+      }),
+    );
+  });
+
   it("threads cfg into sendPollWhatsApp call", async () => {
     const sendPollWhatsApp = vi.fn(async () => ({
       messageId: "wa-poll-1",

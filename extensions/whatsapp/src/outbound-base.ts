@@ -11,7 +11,7 @@ import {
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { resolveOutboundSendDep, sanitizeForPlainText } from "openclaw/plugin-sdk/infra-runtime";
 import { WHATSAPP_LEGACY_OUTBOUND_SEND_DEP_KEYS } from "./outbound-send-deps.js";
-import { lookupInboundMessageMeta } from "./quoted-message.js";
+import { lookupInboundMessageMeta, lookupInboundMessageMetaById } from "./quoted-message.js";
 import { toWhatsappJid } from "./text-runtime.js";
 
 type WhatsAppChunker = NonNullable<ChannelOutboundAdapter["chunker"]>;
@@ -96,6 +96,29 @@ export function createWhatsAppOutboundBase({
   | "sendMedia"
   | "sendPoll"
 > {
+  const resolveQuotedMessageKey = (params: {
+    accountId: string;
+    to: string;
+    replyToId?: string;
+  }) => {
+    const replyToId = params.replyToId?.trim();
+    if (!replyToId) {
+      return undefined;
+    }
+    const targetJid = toWhatsappJid(params.to);
+    const cachedMeta = lookupInboundMessageMeta(params.accountId, targetJid, replyToId);
+    const fallbackMeta = cachedMeta
+      ? undefined
+      : lookupInboundMessageMetaById(params.accountId, replyToId);
+    return {
+      id: replyToId,
+      remoteJid: fallbackMeta?.remoteJid ?? targetJid,
+      fromMe: false,
+      participant: cachedMeta?.participant ?? fallbackMeta?.participant,
+      messageText: cachedMeta?.body ?? fallbackMeta?.body,
+    };
+  };
+
   return {
     deliveryMode: "gateway",
     chunker,
@@ -116,18 +139,11 @@ export function createWhatsAppOutboundBase({
             legacyKeys: WHATSAPP_LEGACY_OUTBOUND_SEND_DEP_KEYS,
           }) ?? sendMessageWhatsApp;
         const lookupAccountId = resolveQuoteLookupAccountId(cfg, accountId);
-        const cachedMeta = replyToId
-          ? lookupInboundMessageMeta(lookupAccountId, toWhatsappJid(to), replyToId)
-          : undefined;
-        const quotedMessageKey = replyToId
-          ? {
-              id: replyToId,
-              remoteJid: toWhatsappJid(to),
-              fromMe: false,
-              participant: cachedMeta?.participant,
-              messageText: cachedMeta?.body,
-            }
-          : undefined;
+        const quotedMessageKey = resolveQuotedMessageKey({
+          accountId: lookupAccountId,
+          to,
+          replyToId,
+        });
         return await send(to, normalizedText, {
           verbose: false,
           cfg,
@@ -154,22 +170,11 @@ export function createWhatsAppOutboundBase({
             legacyKeys: WHATSAPP_LEGACY_OUTBOUND_SEND_DEP_KEYS,
           }) ?? sendMessageWhatsApp;
         const lookupAccountId = resolveQuoteLookupAccountId(cfg, accountId);
-        const quotedMessageKey = replyToId
-          ? (() => {
-              const cachedMeta = lookupInboundMessageMeta(
-                lookupAccountId,
-                toWhatsappJid(to),
-                replyToId,
-              );
-              return {
-                id: replyToId,
-                remoteJid: toWhatsappJid(to),
-                fromMe: false,
-                participant: cachedMeta?.participant,
-                messageText: cachedMeta?.body,
-              };
-            })()
-          : undefined;
+        const quotedMessageKey = resolveQuotedMessageKey({
+          accountId: lookupAccountId,
+          to,
+          replyToId,
+        });
         return await send(to, normalizeText(text), {
           verbose: false,
           cfg,
