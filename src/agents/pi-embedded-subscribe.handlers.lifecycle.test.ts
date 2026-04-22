@@ -11,6 +11,7 @@ function createContext(
   lastAssistant: unknown,
   overrides?: {
     onAgentEvent?: (event: unknown) => void;
+    onBeforeLifecycleTerminal?: () => void | Promise<void>;
     onBlockReplyFlush?: () => void | Promise<void>;
   },
 ): EmbeddedPiSubscribeContext {
@@ -21,6 +22,7 @@ function createContext(
       config: {},
       sessionKey: "agent:main:main",
       onAgentEvent: overrides?.onAgentEvent,
+      onBeforeLifecycleTerminal: overrides?.onBeforeLifecycleTerminal,
       onBlockReply,
       onBlockReplyFlush: overrides?.onBlockReplyFlush,
     },
@@ -378,6 +380,29 @@ describe("handleAgentEnd", () => {
 
     resolveChannelFlush?.();
     await endPromise;
+  });
+
+  it("runs the before-lifecycle callback before the lifecycle end event", async () => {
+    const order: string[] = [];
+    const onAgentEvent = vi.fn(() => {
+      order.push("event");
+    });
+    const onBeforeLifecycleTerminal = vi.fn(() => {
+      order.push("before");
+    });
+    const ctx = createContext(undefined, {
+      onAgentEvent,
+      onBeforeLifecycleTerminal,
+    });
+
+    await handleAgentEnd(ctx);
+
+    expect(order).toEqual(["before", "event"]);
+    expect(onBeforeLifecycleTerminal).toHaveBeenCalledTimes(1);
+    expect(onAgentEvent).toHaveBeenCalledWith({
+      stream: "lifecycle",
+      data: { phase: "end" },
+    });
   });
 
   it("emits lifecycle end after async channel flush completes", async () => {
