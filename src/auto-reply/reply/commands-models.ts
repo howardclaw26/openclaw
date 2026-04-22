@@ -286,6 +286,9 @@ function buildAddExamples(addableProviders: readonly string[]): string[] {
   if (addableProviders.includes("ollama")) {
     examples.push("/models add ollama glm-5.1:cloud");
   }
+  if (addableProviders.includes("lmstudio")) {
+    examples.push("/models add lmstudio qwen/qwen3.5-9b");
+  }
   if (addableProviders.includes("codex")) {
     examples.push("/models add codex gpt-5.4-mini");
   }

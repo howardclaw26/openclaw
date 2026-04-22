@@ -141,7 +141,12 @@ beforeEach(() => {
     },
   });
   modelsAddMocks.listAddableProviders.mockReset();
-  modelsAddMocks.listAddableProviders.mockReturnValue(["anthropic", "ollama", "openai"]);
+  modelsAddMocks.listAddableProviders.mockReturnValue([
+    "anthropic",
+    "lmstudio",
+    "ollama",
+    "openai",
+  ]);
   modelsAddMocks.validateAddProvider.mockReset();
   modelsAddMocks.validateAddProvider.mockImplementation((params: unknown) => ({
     ok: true,
@@ -291,10 +296,12 @@ describe("handleModelsCommand", () => {
     );
     expect(result?.reply?.text).toContain("```text");
     expect(result?.reply?.text).toContain("/models add ollama glm-5.1:cloud");
+    expect(result?.reply?.text).toContain("/models add lmstudio qwen/qwen3.5-9b");
     expect(result?.reply?.text).toContain("/models add <provider> <modelId>");
     expect(result?.reply?.text).toContain("Generic form:");
     expect(result?.reply?.text).toContain("/models add <provider> <modelId>");
     expect(result?.reply?.text).toContain("- anthropic");
+    expect(result?.reply?.text).toContain("- lmstudio");
     expect(result?.reply?.text).toContain("- ollama");
     expect(result?.reply?.text).toContain("- openai");
   });

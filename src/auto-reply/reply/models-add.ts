@@ -29,6 +29,11 @@ import {
 } from "../../config/config.js";
 import type { ModelDefinitionConfig, ModelProviderConfig } from "../../config/types.models.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { formatErrorMessage } from "../../infra/errors.js";
+import { normalizeHostname } from "../../infra/net/hostname.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { buildRemoteBaseUrlPolicy } from "../../memory-host-sdk/host/remote-http.js";
+import { isLoopbackIpAddress } from "../../shared/net/ip.js";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -55,6 +60,8 @@ type AddModelOutcome = {
   allowlistAdded: boolean;
   warnings: string[];
 };
+
+const log = createSubsystemLogger("models-add");
 
 function buildDefaultModelDefinition(modelId: string): ModelDefinitionConfig {
   return {
@@ -85,6 +92,27 @@ function buildDefaultLmstudioProviderConfig(): ModelProviderConfig {
   };
 }
 
+function isLocalLmstudioBaseUrl(baseUrl: string | undefined): boolean {
+  const trimmed = normalizeOptionalString(baseUrl);
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    const hostname = normalizeHostname(parsed.hostname);
+    return (
+      hostname === "localhost" ||
+      hostname === "localhost.localdomain" ||
+      isLoopbackIpAddress(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 const MODEL_ADD_ADAPTERS: Record<string, ModelAddAdapter> = {
   ollama: {
     providerId: "ollama",
@@ -106,6 +134,14 @@ const MODEL_ADD_ADAPTERS: Record<string, ModelAddAdapter> = {
     providerId: "lmstudio",
     bootstrapProviderConfig: () => buildDefaultLmstudioProviderConfig(),
     detect: async ({ cfg, providerConfig, modelId }) => {
+      if (!isLocalLmstudioBaseUrl(providerConfig.baseUrl)) {
+        return {
+          found: false,
+          warnings: [
+            "LM Studio metadata detection is limited to local baseUrl values; using defaults.",
+          ],
+        };
+      }
       try {
         const { apiKey, headers } = await resolveLmstudioRequestContext({
           config: {
@@ -125,6 +161,7 @@ const MODEL_ADD_ADAPTERS: Record<string, ModelAddAdapter> = {
           baseUrl: providerConfig.baseUrl,
           apiKey,
           headers,
+          ssrfPolicy: buildRemoteBaseUrlPolicy(providerConfig.baseUrl),
         });
         const match = fetched.models.find(
           (entry) => normalizeOptionalString(entry.key) === modelId,
@@ -147,9 +184,14 @@ const MODEL_ADD_ADAPTERS: Record<string, ModelAddAdapter> = {
           },
         };
       } catch (error) {
+        log.warn("lmstudio model metadata detection failed; using defaults", {
+          baseUrl: providerConfig.baseUrl,
+          modelId,
+          error: formatErrorMessage(error),
+        });
         return {
           found: false,
-          warnings: [`LM Studio metadata detection failed; using defaults (${String(error)})`],
+          warnings: ["LM Studio metadata detection failed; using defaults."],
         };
       }
     },
@@ -417,9 +459,10 @@ export async function addModelToConfig(params: {
   const validated = validateConfigObjectWithPlugins(allowlisted.nextConfig);
   if (!validated.ok) {
     const issue = validated.issues[0];
+    const detail = issue ? `${issue.path}: ${issue.message}` : "unknown validation error";
     return {
       ok: false,
-      error: `Config invalid after /models add (${issue.path}: ${issue.message}).`,
+      error: `Config invalid after /models add (${detail}).`,
     };
   }
 

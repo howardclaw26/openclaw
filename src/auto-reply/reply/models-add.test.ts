@@ -255,4 +255,124 @@ describe("models-add", () => {
       }),
     ]);
   });
+
+  it("returns a generic validation error when config validation fails without issue details", async () => {
+    const cfg = {
+      models: {
+        providers: {
+          ollama: {
+            baseUrl: "http://127.0.0.1:11434",
+            api: "ollama",
+            models: [],
+          },
+        },
+      },
+    } as OpenClawConfig;
+    configMocks.readConfigFileSnapshot.mockResolvedValue({
+      valid: true,
+      parsed: cfg,
+    });
+    ollamaMocks.queryOllamaModelShowInfo.mockResolvedValue({
+      contextWindow: 202752,
+      capabilities: ["thinking"],
+    });
+    configMocks.validateConfigObjectWithPlugins.mockReturnValue({
+      ok: false,
+      issues: [],
+    });
+
+    const result = await addModelToConfig({
+      cfg,
+      provider: "ollama",
+      modelId: "glm-5.1:cloud",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Config invalid after /models add (unknown validation error).",
+    });
+  });
+
+  it("skips lmstudio metadata detection for non-loopback base urls before resolving auth", async () => {
+    const cfg = {
+      models: {
+        providers: {
+          lmstudio: {
+            baseUrl: "https://example.com/v1",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as OpenClawConfig;
+    configMocks.readConfigFileSnapshot.mockResolvedValue({
+      valid: true,
+      parsed: cfg,
+    });
+    configMocks.validateConfigObjectWithPlugins.mockImplementation((config: OpenClawConfig) => ({
+      ok: true,
+      config,
+    }));
+
+    const result = await addModelToConfig({
+      cfg,
+      provider: "lmstudio",
+      modelId: "qwen/qwen3.5-9b",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(lmstudioRuntimeMocks.resolveLmstudioRequestContext).not.toHaveBeenCalled();
+    expect(lmstudioFetchMocks.fetchLmstudioModels).not.toHaveBeenCalled();
+    expect(result.result.warnings).toContain(
+      "LM Studio metadata detection is limited to local baseUrl values; using defaults.",
+    );
+  });
+
+  it("does not leak raw lmstudio detection errors in user-facing warnings", async () => {
+    const cfg = {
+      models: {
+        providers: {
+          lmstudio: {
+            baseUrl: "http://localhost:1234/v1",
+            api: "openai-completions",
+            models: [],
+          },
+        },
+      },
+    } as OpenClawConfig;
+    configMocks.readConfigFileSnapshot.mockResolvedValue({
+      valid: true,
+      parsed: cfg,
+    });
+    lmstudioRuntimeMocks.resolveLmstudioRequestContext.mockResolvedValue({
+      apiKey: "secret-token",
+      headers: { Authorization: "Bearer secret-token" },
+    });
+    lmstudioFetchMocks.fetchLmstudioModels.mockRejectedValue(
+      new Error("connect ECONNREFUSED http://127.0.0.1:1234/v1/api/v1/models"),
+    );
+    configMocks.validateConfigObjectWithPlugins.mockImplementation((config: OpenClawConfig) => ({
+      ok: true,
+      config,
+    }));
+
+    const result = await addModelToConfig({
+      cfg,
+      provider: "lmstudio",
+      modelId: "qwen/qwen3.5-9b",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.result.warnings).toContain(
+      "LM Studio metadata detection failed; using defaults.",
+    );
+    expect(result.result.warnings.join(" ")).not.toContain("ECONNREFUSED");
+    expect(result.result.warnings.join(" ")).not.toContain("127.0.0.1");
+  });
 });
