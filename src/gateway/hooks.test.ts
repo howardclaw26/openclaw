@@ -366,6 +366,21 @@ describe("gateway hooks helpers", () => {
     ).toBe("agent:hooks:slack:channel:c123");
   });
 
+  test("normalizeHookDispatchSessionKey scopes legacy and non-agent keys to the target agent", () => {
+    expect(
+      normalizeHookDispatchSessionKey({
+        sessionKey: "hook:wake:custom",
+        targetAgentId: "hooks",
+      }),
+    ).toBe("agent:hooks:hook:wake:custom");
+    expect(
+      normalizeHookDispatchSessionKey({
+        sessionKey: "main",
+        targetAgentId: "hooks",
+      }),
+    ).toBe("agent:hooks:main");
+  });
+
   test("resolveHooksConfig validates defaultSessionKey and generated fallback against prefixes", () => {
     expect(() =>
       resolveHooksConfig({

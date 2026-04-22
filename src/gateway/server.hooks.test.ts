@@ -8,6 +8,7 @@ import {
   peekSystemEvents,
 } from "../infra/system-events.js";
 import { DEDUPE_TTL_MS } from "./server-constants.js";
+import { loadSessionEntry } from "./session-utils.js";
 import {
   cronIsolatedRun,
   installGatewayTestHooks,
@@ -319,18 +320,18 @@ describe("gateway server hooks", () => {
     });
   });
 
-  test("routes wake hooks to explicit sessions and mapped agent main sessions", async () => {
+  test("routes wake hooks to canonical explicit sessions and mapped agent sessions", async () => {
     testState.hooksConfig = {
       enabled: true,
       token: HOOK_TOKEN,
       allowRequestSessionKey: true,
-      allowedSessionKeyPrefixes: ["hook:"],
       mappings: [
         {
           match: { path: "mapped-wake-agent" },
           action: "wake",
           agentId: "hooks",
           textTemplate: "Mapped agent wake: {{payload.subject}}",
+          sessionKey: "hook:mapped:email",
         },
       ],
     };
@@ -338,26 +339,35 @@ describe("gateway server hooks", () => {
 
     await withGatewayServer(async ({ port }) => {
       const directSessionKey = "hook:wake:custom";
+      const directCanonicalKey = loadSessionEntry(directSessionKey).canonicalKey;
       const direct = await postHook(port, "/hooks/wake", {
         text: "Direct custom wake",
         sessionKey: directSessionKey,
       });
       expect(direct.status).toBe(200);
       await expect
-        .poll(() => peekSystemEventEntries(directSessionKey), { timeout: 5_000, interval: 10 })
+        .poll(() => peekSystemEventEntries(directCanonicalKey), {
+          timeout: 5_000,
+          interval: 10,
+        })
         .toEqual([
           expect.objectContaining({
             text: "Direct custom wake",
             trusted: false,
           }),
         ]);
+      expect(peekSystemEventEntries(directSessionKey)).toEqual([]);
       expect(peekSystemEventEntries(resolveMainKey())).toEqual([]);
-      drainSystemEvents(directSessionKey);
+      drainSystemEvents(directCanonicalKey);
 
-      const mapped = await postHook(port, "/hooks/mapped-wake-agent", { subject: "Email" });
+      const mappedSessionKey = "hook:mapped:email";
+      const mappedCanonicalKey = loadSessionEntry("agent:hooks:hook:mapped:email").canonicalKey;
+      const mapped = await postHook(port, "/hooks/mapped-wake-agent", {
+        subject: "Email",
+      });
       expect(mapped.status).toBe(200);
       await expect
-        .poll(() => peekSystemEventEntries("agent:hooks:main"), {
+        .poll(() => peekSystemEventEntries(mappedCanonicalKey), {
           timeout: 5_000,
           interval: 10,
         })
@@ -367,8 +377,9 @@ describe("gateway server hooks", () => {
             trusted: false,
           }),
         ]);
+      expect(peekSystemEventEntries(mappedSessionKey)).toEqual([]);
       expect(peekSystemEventEntries(resolveMainKey())).toEqual([]);
-      drainSystemEvents("agent:hooks:main");
+      drainSystemEvents(mappedCanonicalKey);
     });
   });
 

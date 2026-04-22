@@ -9,6 +9,7 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import type { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { type HookAgentDispatchPayload, type HooksConfigResolved } from "../hooks.js";
+import { loadSessionEntry } from "../session-utils.js";
 import { createHooksRequestHandler, type HookClientIpConfig } from "./hooks-request-handler.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
@@ -28,7 +29,8 @@ export function createGatewayHooksRequestHandler(params: {
     mode: "now" | "next-heartbeat";
     sessionKey?: string;
   }) => {
-    const sessionKey = value.sessionKey || resolveMainSessionKeyFromConfig();
+    const requestedSessionKey = value.sessionKey || resolveMainSessionKeyFromConfig();
+    const { canonicalKey: sessionKey } = loadSessionEntry(requestedSessionKey);
     enqueueSystemEvent(value.text, { sessionKey, trusted: false });
     if (value.mode === "now") {
       requestHeartbeatNow({ reason: "hook:wake", sessionKey });

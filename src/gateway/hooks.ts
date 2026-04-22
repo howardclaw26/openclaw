@@ -4,7 +4,11 @@ import { listAgentIds, resolveDefaultAgentId } from "../agents/agent-scope-confi
 import { listChannelPlugins } from "../channels/plugins/index.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { readJsonBodyWithLimit, requestBodyErrorToText } from "../infra/http-body.js";
-import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
+import {
+  normalizeAgentId,
+  parseAgentSessionKey,
+  toAgentStoreSessionKey,
+} from "../routing/session-key.js";
 import type { HookExternalContentSource } from "../security/external-content.js";
 import {
   normalizeLowercaseStringOrEmpty,
@@ -400,12 +404,15 @@ export function normalizeHookDispatchSessionKey(params: {
   if (!trimmed || !params.targetAgentId) {
     return trimmed;
   }
-  const parsed = parseAgentSessionKey(trimmed);
-  if (!parsed) {
-    return trimmed;
-  }
   const targetAgentId = normalizeAgentId(params.targetAgentId);
-  return `agent:${targetAgentId}:${parsed.rest}`;
+  const parsed = parseAgentSessionKey(trimmed);
+  if (parsed) {
+    return `agent:${targetAgentId}:${parsed.rest}`;
+  }
+  return toAgentStoreSessionKey({
+    agentId: targetAgentId,
+    requestKey: trimmed,
+  });
 }
 
 export function normalizeAgentPayload(payload: Record<string, unknown>):
