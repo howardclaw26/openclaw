@@ -139,6 +139,16 @@ describe("createBlockReplyDeliveryHandler", () => {
     });
   });
 
+  it("does not mark plain replies as explicit reply_to_current opt-outs", () => {
+    const normalized = normalizeReplyPayloadDirectives({
+      payload: { text: "plain reply" },
+      trimLeadingWhitespace: true,
+      parseMode: "auto",
+    });
+
+    expect(normalized.payload.replyToCurrent).toBeUndefined();
+  });
+
   it("passes normalized media block replies through media path normalization", async () => {
     const blockReplyPipeline = {
       enqueue: vi.fn(),
@@ -169,7 +179,7 @@ describe("createBlockReplyDeliveryHandler", () => {
       mediaUrl: absPath,
       mediaUrls: [absPath],
       replyToId: undefined,
-      replyToCurrent: false,
+      replyToCurrent: undefined,
       replyToTag: false,
       audioAsVoice: false,
     });
