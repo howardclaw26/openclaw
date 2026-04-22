@@ -891,6 +891,7 @@ export async function runReplyAgent(params: {
   shouldInjectGroupIntro: boolean;
   typingMode: TypingMode;
   resetTriggered?: boolean;
+  replyThreadingOverride?: TemplateContext["ReplyThreading"];
   replyOperation?: ReplyOperation;
 }): Promise<ReplyPayload | ReplyPayload[] | undefined> {
   const {
@@ -920,6 +921,7 @@ export async function runReplyAgent(params: {
     shouldInjectGroupIntro,
     typingMode,
     resetTriggered,
+    replyThreadingOverride,
     replyOperation: providedReplyOperation,
   } = params;
 
@@ -1363,7 +1365,7 @@ export async function runReplyAgent(params: {
       replyToMode,
       replyToChannel,
       currentMessageId,
-      replyThreading: sessionCtx.ReplyThreading,
+      replyThreading: replyThreadingOverride ?? sessionCtx.ReplyThreading,
       messageProvider: followupRun.run.messageProvider,
       messagingToolSentTexts: runResult.messagingToolSentTexts,
       messagingToolSentMediaUrls: runResult.messagingToolSentMediaUrls,
