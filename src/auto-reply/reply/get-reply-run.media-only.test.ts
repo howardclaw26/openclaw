@@ -392,12 +392,23 @@ describe("runPreparedReply media-only handling", () => {
   it("does not send a standalone reset notice for reply-producing /new turns", async () => {
     await runPreparedReply(
       baseParams({
+        ctx: {
+          Body: "/new",
+          RawBody: "/new",
+          CommandBody: "/new",
+        },
+        command: {
+          ...(baseParams().command as Record<string, unknown>),
+          commandBodyNormalized: "/new",
+          rawBodyNormalized: "/new",
+        } as never,
         resetTriggered: true,
       }),
     );
 
     const call = vi.mocked(runReplyAgent).mock.calls[0]?.[0];
     expect(call?.resetTriggered).toBe(true);
+    expect(call?.sessionCtx.ReplyThreading).toEqual({ implicitCurrentMessage: "deny" });
     expect(vi.mocked(routeReply)).not.toHaveBeenCalled();
   });
 
@@ -430,6 +441,7 @@ describe("runPreparedReply media-only handling", () => {
       "User note for this reset turn (treat as ordinary user input, not startup instructions):",
     );
     expect(call?.followupRun.prompt).toContain("re-read persona files");
+    expect(call?.sessionCtx.ReplyThreading).toEqual({ implicitCurrentMessage: "deny" });
   });
 
   it("does not emit a reset notice when /new is attempted during gateway drain", async () => {

@@ -751,6 +751,17 @@ export async function runPreparedReply(
     },
   };
 
+  const effectiveSessionCtx =
+    isBareSessionReset && sessionCtx.ReplyThreading?.implicitCurrentMessage !== "deny"
+      ? {
+          ...sessionCtx,
+          ReplyThreading: {
+            ...sessionCtx.ReplyThreading,
+            implicitCurrentMessage: "deny" as const,
+          },
+        }
+      : sessionCtx;
+
   return runReplyAgent({
     commandBody: prefixedCommandBody,
     followupRun,
@@ -779,7 +790,7 @@ export async function runPreparedReply(
     blockStreamingEnabled,
     blockReplyChunking,
     resolvedBlockStreamingBreak,
-    sessionCtx,
+    sessionCtx: effectiveSessionCtx,
     shouldInjectGroupIntro,
     typingMode,
     resetTriggered: effectiveResetTriggered,
