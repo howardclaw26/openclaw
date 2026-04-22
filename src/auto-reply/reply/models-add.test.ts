@@ -18,15 +18,43 @@ const configMocks = vi.hoisted(() => ({
 }));
 
 const ollamaMocks = vi.hoisted(() => ({
+  buildOllamaModelDefinition: vi.fn(
+    (modelId: string, contextWindow?: number, capabilities?: string[]) => ({
+      id: modelId,
+      name: modelId,
+      reasoning: /think|reason/i.test(modelId),
+      input: capabilities?.includes("vision") ? ["text", "image"] : ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: contextWindow ?? 32768,
+      maxTokens: 8192,
+    }),
+  ),
   queryOllamaModelShowInfo: vi.fn(),
 }));
 
 const lmstudioRuntimeMocks = vi.hoisted(() => ({
-  resolveLmstudioRequestContext: vi.fn(),
-}));
-
-const lmstudioFetchMocks = vi.hoisted(() => ({
+  LMSTUDIO_DEFAULT_API_KEY_ENV_VAR: "LMSTUDIO_API_KEY",
+  LMSTUDIO_DEFAULT_INFERENCE_BASE_URL: "http://127.0.0.1:1234/v1",
   fetchLmstudioModels: vi.fn(),
+  mapLmstudioWireEntry: vi.fn(
+    (entry: {
+      key: string;
+      displayName?: string;
+      display_name?: string;
+      max_context_length?: number;
+      capabilities?: { reasoning?: { allowed_options?: string[] } };
+    }) => ({
+      id: entry.key,
+      displayName: entry.displayName ?? entry.display_name ?? entry.key,
+      reasoning: (entry.capabilities?.reasoning?.allowed_options?.length ?? 0) > 0,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: entry.max_context_length ?? 32768,
+      maxTokens: 8192,
+    }),
+  ),
+  resolveLmstudioInferenceBase: vi.fn((baseUrl?: string) => baseUrl ?? "http://127.0.0.1:1234/v1"),
+  resolveLmstudioRequestContext: vi.fn(),
 }));
 
 vi.mock("../../config/config.js", () => ({
@@ -36,22 +64,22 @@ vi.mock("../../config/config.js", () => ({
   validateConfigObjectWithPlugins: configMocks.validateConfigObjectWithPlugins,
 }));
 
-vi.mock("../../../extensions/ollama/api.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../../extensions/ollama/api.js")>();
+vi.mock("../../plugin-sdk/ollama-runtime.js", () => {
   return {
-    ...actual,
+    OLLAMA_DEFAULT_BASE_URL: "http://127.0.0.1:11434",
+    buildOllamaModelDefinition: ollamaMocks.buildOllamaModelDefinition,
     queryOllamaModelShowInfo: ollamaMocks.queryOllamaModelShowInfo,
   };
 });
 
-vi.mock("../../../extensions/lmstudio/runtime-api.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../../extensions/lmstudio/runtime-api.js")
-  >("../../../extensions/lmstudio/runtime-api.js");
+vi.mock("../../plugin-sdk/lmstudio-runtime.js", () => {
   return {
-    ...actual,
+    LMSTUDIO_DEFAULT_API_KEY_ENV_VAR: lmstudioRuntimeMocks.LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
+    LMSTUDIO_DEFAULT_INFERENCE_BASE_URL: lmstudioRuntimeMocks.LMSTUDIO_DEFAULT_INFERENCE_BASE_URL,
+    fetchLmstudioModels: lmstudioRuntimeMocks.fetchLmstudioModels,
+    mapLmstudioWireEntry: lmstudioRuntimeMocks.mapLmstudioWireEntry,
+    resolveLmstudioInferenceBase: lmstudioRuntimeMocks.resolveLmstudioInferenceBase,
     resolveLmstudioRequestContext: lmstudioRuntimeMocks.resolveLmstudioRequestContext,
-    fetchLmstudioModels: lmstudioFetchMocks.fetchLmstudioModels,
   };
 });
 
@@ -60,10 +88,13 @@ describe("models-add", () => {
     configMocks.readConfigFileSnapshot.mockReset();
     configMocks.replaceConfigFile.mockReset();
     configMocks.validateConfigObjectWithPlugins.mockReset();
+    ollamaMocks.buildOllamaModelDefinition.mockClear();
     ollamaMocks.queryOllamaModelShowInfo.mockReset();
     ollamaMocks.queryOllamaModelShowInfo.mockResolvedValue({});
+    lmstudioRuntimeMocks.fetchLmstudioModels.mockReset();
+    lmstudioRuntimeMocks.mapLmstudioWireEntry.mockClear();
+    lmstudioRuntimeMocks.resolveLmstudioInferenceBase.mockClear();
     lmstudioRuntimeMocks.resolveLmstudioRequestContext.mockReset();
-    lmstudioFetchMocks.fetchLmstudioModels.mockReset();
   });
 
   it("lists addable providers only when the write path can actually add them", () => {
@@ -282,7 +313,7 @@ describe("models-add", () => {
       apiKey: undefined,
       headers: undefined,
     });
-    lmstudioFetchMocks.fetchLmstudioModels.mockResolvedValue({
+    lmstudioRuntimeMocks.fetchLmstudioModels.mockResolvedValue({
       reachable: true,
       status: 200,
       models: [
@@ -308,7 +339,7 @@ describe("models-add", () => {
 
     expect(result.ok).toBe(true);
     const written = configMocks.replaceConfigFile.mock.calls[0]?.[0]?.nextConfig as OpenClawConfig;
-    expect(written.models?.providers?.lmstudio?.baseUrl).toBe("http://localhost:1234/v1");
+    expect(written.models?.providers?.lmstudio?.baseUrl).toBe("http://127.0.0.1:1234/v1");
     expect(written.models?.providers?.lmstudio?.api).toBe("openai-completions");
     expect(written.models?.providers?.lmstudio?.models).toEqual([
       expect.objectContaining({
@@ -387,7 +418,7 @@ describe("models-add", () => {
       return;
     }
     expect(lmstudioRuntimeMocks.resolveLmstudioRequestContext).not.toHaveBeenCalled();
-    expect(lmstudioFetchMocks.fetchLmstudioModels).not.toHaveBeenCalled();
+    expect(lmstudioRuntimeMocks.fetchLmstudioModels).not.toHaveBeenCalled();
     expect(result.result.warnings).toContain(
       "LM Studio metadata detection is limited to local baseUrl values; using defaults.",
     );
@@ -413,7 +444,7 @@ describe("models-add", () => {
       apiKey: "secret-token",
       headers: { Authorization: "Bearer secret-token" },
     });
-    lmstudioFetchMocks.fetchLmstudioModels.mockRejectedValue(
+    lmstudioRuntimeMocks.fetchLmstudioModels.mockRejectedValue(
       new Error("connect ECONNREFUSED http://127.0.0.1:1234/v1/api/v1/models"),
     );
     configMocks.validateConfigObjectWithPlugins.mockImplementation((config: OpenClawConfig) => ({

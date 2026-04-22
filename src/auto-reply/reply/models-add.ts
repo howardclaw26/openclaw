@@ -1,17 +1,4 @@
 import {
-  fetchLmstudioModels,
-  LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
-  LMSTUDIO_DEFAULT_INFERENCE_BASE_URL,
-  mapLmstudioWireEntry,
-  resolveLmstudioInferenceBase,
-  resolveLmstudioRequestContext,
-} from "../../../extensions/lmstudio/runtime-api.js";
-import {
-  buildOllamaModelDefinition,
-  OLLAMA_DEFAULT_BASE_URL,
-  queryOllamaModelShowInfo,
-} from "../../../extensions/ollama/api.js";
-import {
   buildConfiguredAllowlistKeys,
   normalizeProviderId,
   resolveDefaultModelForAgent,
@@ -34,6 +21,19 @@ import { formatErrorMessage } from "../../infra/errors.js";
 import { normalizeHostname } from "../../infra/net/hostname.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { buildRemoteBaseUrlPolicy } from "../../memory-host-sdk/host/remote-http.js";
+import {
+  fetchLmstudioModels,
+  LMSTUDIO_DEFAULT_API_KEY_ENV_VAR,
+  LMSTUDIO_DEFAULT_INFERENCE_BASE_URL,
+  mapLmstudioWireEntry,
+  resolveLmstudioInferenceBase,
+  resolveLmstudioRequestContext,
+} from "../../plugin-sdk/lmstudio-runtime.js";
+import {
+  buildOllamaModelDefinition,
+  OLLAMA_DEFAULT_BASE_URL,
+  queryOllamaModelShowInfo,
+} from "../../plugin-sdk/ollama-runtime.js";
 import { isLoopbackIpAddress } from "../../shared/net/ip.js";
 import {
   normalizeLowercaseStringOrEmpty,
