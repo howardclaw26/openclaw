@@ -37,25 +37,36 @@ vi.mock("../infra/git-root.js", () => ({
   resolveGitHeadPath,
 }));
 
+const withTimeout = vi.hoisted(() => vi.fn(async <T>(promise: Promise<T>) => await promise));
+vi.mock("../utils/with-timeout.js", () => ({
+  withTimeout,
+}));
+
 import { ensureOnboardingPluginInstalled } from "./onboarding-plugin-install.js";
 
 describe("ensureOnboardingPluginInstalled", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resolveGitHeadPath.mockReturnValue(null);
+    withTimeout.mockImplementation(async <T>(promise: Promise<T>) => await promise);
   });
 
-  it("passes pinned npm specs and expected integrity to npm installs", async () => {
-    installPluginFromNpmSpec.mockResolvedValue({
-      ok: true,
-      pluginId: "demo-plugin",
-      targetDir: "/tmp/demo-plugin",
-      version: "1.2.3",
-      npmResolution: {
-        resolvedSpec: "@wecom/wecom-openclaw-plugin@1.2.3",
-        integrity: "sha512-wecom",
-      },
+  it("passes pinned npm specs and expected integrity to npm installs with progress", async () => {
+    installPluginFromNpmSpec.mockImplementation(async (params) => {
+      params.logger?.info?.("Downloading demo-plugin…");
+      return {
+        ok: true,
+        pluginId: "demo-plugin",
+        targetDir: "/tmp/demo-plugin",
+        version: "1.2.3",
+        npmResolution: {
+          resolvedSpec: "@wecom/wecom-openclaw-plugin@1.2.3",
+          integrity: "sha512-wecom",
+        },
+      };
     });
+    const stop = vi.fn();
+    const update = vi.fn();
 
     const result = await ensureOnboardingPluginInstalled({
       cfg: {},
@@ -69,6 +80,7 @@ describe("ensureOnboardingPluginInstalled", () => {
       },
       prompter: {
         select: vi.fn(async () => "npm"),
+        progress: vi.fn(() => ({ update, stop })),
       } as never,
       runtime: {} as never,
     });
@@ -77,9 +89,50 @@ describe("ensureOnboardingPluginInstalled", () => {
       expect.objectContaining({
         spec: "@wecom/wecom-openclaw-plugin@1.2.3",
         expectedIntegrity: "sha512-wecom",
+        timeoutMs: 300_000,
       }),
     );
+    expect(update).toHaveBeenCalledWith("Downloading demo-plugin…");
+    expect(stop).toHaveBeenCalledWith("Installed WeCom plugin");
     expect(result.installed).toBe(true);
+    expect(result.status).toBe("installed");
+  });
+
+  it("returns a timed out status and notes the retry path when npm install hangs", async () => {
+    const note = vi.fn(async () => {});
+    const stop = vi.fn();
+    withTimeout.mockRejectedValue(new Error("timeout"));
+
+    const result = await ensureOnboardingPluginInstalled({
+      cfg: {},
+      entry: {
+        pluginId: "demo-plugin",
+        label: "Demo Plugin",
+        install: {
+          npmSpec: "@demo/plugin",
+        },
+      },
+      prompter: {
+        select: vi.fn(async () => "npm"),
+        note,
+        progress: vi.fn(() => ({ update: vi.fn(), stop })),
+      } as never,
+      runtime: {
+        error: vi.fn(),
+      } as never,
+    });
+
+    expect(result).toEqual({
+      cfg: {},
+      installed: false,
+      pluginId: "demo-plugin",
+      status: "timed_out",
+    });
+    expect(stop).toHaveBeenCalledWith("Install timed out: Demo Plugin");
+    expect(note).toHaveBeenCalledWith(
+      "Installing @demo/plugin timed out after 5 minutes.\nReturning to selection.",
+      "Plugin install",
+    );
   });
 
   it("does not offer local installs when the workspace only has a spoofed .git marker", async () => {
@@ -123,6 +176,7 @@ describe("ensureOnboardingPluginInstalled", () => {
         cfg: {},
         installed: false,
         pluginId: "demo-plugin",
+        status: "skipped",
       });
     });
   });

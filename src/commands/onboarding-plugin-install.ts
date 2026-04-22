@@ -13,9 +13,12 @@ import { buildNpmResolutionInstallFields, recordPluginInstall } from "../plugins
 import type { PluginPackageInstall } from "../plugins/manifest.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { sanitizeTerminalText } from "../terminal/safe-text.js";
+import { withTimeout } from "../utils/with-timeout.js";
 import type { WizardPrompter } from "../wizard/prompts.js";
 
 type InstallChoice = "npm" | "local" | "skip";
+const ONBOARDING_PLUGIN_INSTALL_TIMEOUT_MS = 5 * 60 * 1000;
+const ONBOARDING_PLUGIN_INSTALL_WATCHDOG_TIMEOUT_MS = ONBOARDING_PLUGIN_INSTALL_TIMEOUT_MS + 5_000;
 
 export type OnboardingPluginInstallEntry = {
   pluginId: string;
@@ -23,10 +26,13 @@ export type OnboardingPluginInstallEntry = {
   install: PluginPackageInstall;
 };
 
+export type OnboardingPluginInstallStatus = "installed" | "skipped" | "failed" | "timed_out";
+
 export type OnboardingPluginInstallResult = {
   cfg: OpenClawConfig;
   installed: boolean;
   pluginId: string;
+  status: OnboardingPluginInstallStatus;
 };
 
 function hasGitHead(gitDir: string): boolean {
@@ -220,6 +226,92 @@ async function promptInstallChoice(params: {
   });
 }
 
+function formatDurationLabel(timeoutMs: number): string {
+  if (timeoutMs % 60_000 === 0) {
+    const minutes = timeoutMs / 60_000;
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+  const seconds = Math.round(timeoutMs / 1000);
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+}
+
+function summarizeInstallError(message: string): string {
+  const cleaned = sanitizeTerminalText(message)
+    .replace(/^Install failed(?:\s*\([^)]*\))?\s*:?\s*/i, "")
+    .trim();
+  if (!cleaned) {
+    return "Unknown install failure";
+  }
+  return cleaned.length > 180 ? `${cleaned.slice(0, 179)}…` : cleaned;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && error.message === "timeout";
+}
+
+async function installPluginFromNpmSpecWithProgress(params: {
+  entry: OnboardingPluginInstallEntry;
+  npmSpec: string;
+  prompter: WizardPrompter;
+  runtime: RuntimeEnv;
+}): Promise<
+  | { status: "timed_out" }
+  | {
+      status: "completed";
+      result: Awaited<ReturnType<typeof installPluginFromNpmSpec>>;
+    }
+> {
+  const safeLabel = sanitizeTerminalText(params.entry.label);
+  const progress = params.prompter.progress(`Installing ${safeLabel} plugin…`);
+  const updateProgress = (message: string) => {
+    const next = sanitizeTerminalText(message).trim();
+    if (!next) {
+      return;
+    }
+    progress.update(next);
+  };
+
+  try {
+    const result = await withTimeout(
+      installPluginFromNpmSpec({
+        spec: params.npmSpec,
+        timeoutMs: ONBOARDING_PLUGIN_INSTALL_TIMEOUT_MS,
+        expectedIntegrity: params.entry.install.expectedIntegrity,
+        logger: {
+          info: updateProgress,
+          warn: (message) => {
+            updateProgress(message);
+            params.runtime.log?.(sanitizeTerminalText(message));
+          },
+        },
+      }),
+      ONBOARDING_PLUGIN_INSTALL_WATCHDOG_TIMEOUT_MS,
+    );
+    if (result.ok) {
+      progress.stop(`Installed ${safeLabel} plugin`);
+    } else {
+      progress.stop(`Install failed: ${safeLabel}`);
+    }
+    return {
+      status: "completed",
+      result,
+    };
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      progress.stop(`Install timed out: ${safeLabel}`);
+      return { status: "timed_out" };
+    }
+    progress.stop(`Install failed: ${safeLabel}`);
+    return {
+      status: "completed",
+      result: {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
 export async function ensureOnboardingPluginInstalled(params: {
   cfg: OpenClawConfig;
   entry: OnboardingPluginInstallEntry;
@@ -258,6 +350,7 @@ export async function ensureOnboardingPluginInstalled(params: {
       cfg: next,
       installed: false,
       pluginId: entry.pluginId,
+      status: "skipped",
     };
   }
 
@@ -268,10 +361,15 @@ export async function ensureOnboardingPluginInstalled(params: {
       cfg: next,
       installed: true,
       pluginId: entry.pluginId,
+      status: "installed",
     };
   }
 
   if (!npmSpec) {
+    await prompter.note(
+      `No npm install source is available for ${sanitizeTerminalText(entry.label)}. Returning to selection.`,
+      "Plugin install",
+    );
     runtime.error?.(
       `Plugin install failed: no npm spec available for ${sanitizeTerminalText(entry.pluginId)}.`,
     );
@@ -279,17 +377,37 @@ export async function ensureOnboardingPluginInstalled(params: {
       cfg: next,
       installed: false,
       pluginId: entry.pluginId,
+      status: "failed",
     };
   }
 
-  const result = await installPluginFromNpmSpec({
-    spec: npmSpec,
-    expectedIntegrity: entry.install.expectedIntegrity,
-    logger: {
-      info: (message) => runtime.log?.(message),
-      warn: (message) => runtime.log?.(message),
-    },
+  const installOutcome = await installPluginFromNpmSpecWithProgress({
+    entry,
+    npmSpec,
+    prompter,
+    runtime,
   });
+
+  if (installOutcome.status === "timed_out") {
+    await prompter.note(
+      [
+        `Installing ${sanitizeTerminalText(npmSpec)} timed out after ${formatDurationLabel(ONBOARDING_PLUGIN_INSTALL_TIMEOUT_MS)}.`,
+        "Returning to selection.",
+      ].join("\n"),
+      "Plugin install",
+    );
+    runtime.error?.(
+      `Plugin install timed out after ${ONBOARDING_PLUGIN_INSTALL_TIMEOUT_MS}ms: ${sanitizeTerminalText(npmSpec)}`,
+    );
+    return {
+      cfg: next,
+      installed: false,
+      pluginId: entry.pluginId,
+      status: "timed_out",
+    };
+  }
+
+  const { result } = installOutcome;
 
   if (result.ok) {
     next = enablePluginInConfig(next, result.pluginId).config;
@@ -305,11 +423,15 @@ export async function ensureOnboardingPluginInstalled(params: {
       cfg: next,
       installed: true,
       pluginId: result.pluginId,
+      status: "installed",
     };
   }
 
   await prompter.note(
-    `Failed to install ${sanitizeTerminalText(npmSpec)}: ${sanitizeTerminalText(result.error)}`,
+    [
+      `Failed to install ${sanitizeTerminalText(npmSpec)}: ${summarizeInstallError(result.error)}`,
+      "Returning to selection.",
+    ].join("\n"),
     "Plugin install",
   );
 
@@ -325,6 +447,7 @@ export async function ensureOnboardingPluginInstalled(params: {
         cfg: next,
         installed: true,
         pluginId: entry.pluginId,
+        status: "installed",
       };
     }
   }
@@ -334,5 +457,6 @@ export async function ensureOnboardingPluginInstalled(params: {
     cfg: next,
     installed: false,
     pluginId: entry.pluginId,
+    status: "failed",
   };
 }

@@ -40,6 +40,7 @@ export type ApplyProviderAuthChoiceParams = {
 export type ApplyProviderAuthChoiceResult = {
   config: OpenClawConfig;
   agentModelOverride?: string;
+  retrySelection?: boolean;
 };
 
 export type PluginProviderAuthChoiceOptions = {
@@ -228,7 +229,7 @@ export async function applyAuthChoiceLoadedPluginProvider(
   });
   if (!resolved && installCatalogEntry) {
     const installResult = await ensureOnboardingPluginInstalled({
-      cfg: enabledConfig,
+      cfg: nextConfig,
       entry: {
         pluginId: installCatalogEntry.pluginId,
         label: installCatalogEntry.label,
@@ -239,7 +240,7 @@ export async function applyAuthChoiceLoadedPluginProvider(
       workspaceDir,
     });
     if (!installResult.installed) {
-      return { config: nextConfig };
+      return { config: installResult.cfg, retrySelection: true };
     }
     nextConfig = installResult.cfg;
     clearPluginDiscoveryCache();

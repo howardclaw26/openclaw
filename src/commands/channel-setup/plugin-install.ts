@@ -14,6 +14,7 @@ import type { WizardPrompter } from "../../wizard/prompts.js";
 import {
   ensureOnboardingPluginInstalled,
   type OnboardingPluginInstallEntry,
+  type OnboardingPluginInstallStatus,
 } from "../onboarding-plugin-install.js";
 import { getTrustedChannelPluginCatalogEntry } from "./trusted-catalog.js";
 
@@ -21,6 +22,7 @@ type InstallResult = {
   cfg: OpenClawConfig;
   installed: boolean;
   pluginId?: string;
+  status: OnboardingPluginInstallStatus;
 };
 
 function toOnboardingPluginInstallEntry(
@@ -51,6 +53,7 @@ export async function ensureChannelSetupPluginInstalled(params: {
     cfg: result.cfg,
     installed: result.installed,
     pluginId: result.pluginId,
+    status: result.status,
   };
 }
 

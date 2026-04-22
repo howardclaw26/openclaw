@@ -77,6 +77,7 @@ const ensureOnboardingPluginInstalled = vi.hoisted(() =>
     cfg,
     installed: false,
     pluginId: entry?.pluginId ?? "missing-plugin",
+    status: "skipped",
   })),
 );
 vi.mock("../commands/onboarding-plugin-install.js", () => ({
@@ -144,6 +145,7 @@ describe("applyAuthChoiceLoadedPluginProvider", () => {
       cfg,
       installed: false,
       pluginId: entry?.pluginId ?? "missing-plugin",
+      status: "skipped",
     }));
   });
 
@@ -312,6 +314,7 @@ describe("applyAuthChoiceLoadedPluginProvider", () => {
       },
       installed: true,
       pluginId: "local-provider-plugin",
+      status: "installed",
     });
     resolvePluginProviders.mockReturnValue([provider]);
     resolveProviderPluginChoice.mockReturnValueOnce(null).mockReturnValueOnce({
@@ -355,7 +358,7 @@ describe("applyAuthChoiceLoadedPluginProvider", () => {
     const result = await applyAuthChoiceLoadedPluginProvider(buildParams());
 
     expect(ensureOnboardingPluginInstalled).toHaveBeenCalledOnce();
-    expect(result).toEqual({ config: {} });
+    expect(result).toEqual({ config: {}, retrySelection: true });
   });
 
   it("merges provider config patches and emits provider notes", async () => {
