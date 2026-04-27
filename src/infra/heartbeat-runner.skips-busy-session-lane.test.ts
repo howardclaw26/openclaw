@@ -99,6 +99,75 @@ describe("heartbeat runner skips when target session lane is busy", () => {
     });
   });
 
+  it("returns requests-in-flight when a persisted agent turn is pending for the session", async () => {
+    await withTempHeartbeatSandbox(async ({ storePath, replySpy }) => {
+      const cfg = createHeartbeatTelegramConfig();
+      const sessionKey = await seedHeartbeatTelegramSession(storePath, cfg);
+
+      const loadPendingSessionDeliveries = vi.fn(async () => [
+        {
+          kind: "agentTurn" as const,
+          sessionKey,
+          message: "queued user message after restart",
+          messageId: "restart-sentinel:test",
+          id: "pending-user-turn",
+          enqueuedAt: 1,
+          retryCount: 0,
+        },
+      ]);
+
+      const result = await runHeartbeatOnce({
+        cfg,
+        deps: {
+          getQueueSize: vi.fn((_lane?: string) => 0),
+          loadPendingSessionDeliveries,
+          nowMs: () => Date.now(),
+          getReplyFromConfig: replySpy,
+        } as unknown as HeartbeatDeps,
+      });
+
+      expect(result.status).toBe("skipped");
+      if (result.status === "skipped") {
+        expect(result.reason).toBe("requests-in-flight");
+      }
+      expect(replySpy).not.toHaveBeenCalled();
+    });
+  });
+
+  it("does not skip for pending agent turns targeting another session", async () => {
+    await withTempHeartbeatSandbox(async ({ storePath, replySpy }) => {
+      const cfg = createHeartbeatTelegramConfig();
+      await seedHeartbeatTelegramSession(storePath, cfg);
+
+      replySpy.mockResolvedValue({
+        text: "HEARTBEAT_OK",
+      });
+
+      const result = await runHeartbeatOnce({
+        cfg,
+        deps: {
+          getQueueSize: vi.fn((_lane?: string) => 0),
+          loadPendingSessionDeliveries: vi.fn(async () => [
+            {
+              kind: "agentTurn" as const,
+              sessionKey: "other-session",
+              message: "not this session",
+              messageId: "restart-sentinel:other",
+              id: "pending-other-turn",
+              enqueuedAt: 1,
+              retryCount: 0,
+            },
+          ]),
+          nowMs: () => Date.now(),
+          getReplyFromConfig: replySpy,
+        } as unknown as HeartbeatDeps,
+      });
+
+      expect(replySpy).toHaveBeenCalled();
+      expect(result.status).toBe("ran");
+    });
+  });
+
   it("proceeds normally when session lane is idle", async () => {
     await withTempHeartbeatSandbox(async ({ storePath, replySpy }) => {
       const cfg = createHeartbeatTelegramConfig();

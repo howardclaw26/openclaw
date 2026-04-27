@@ -106,6 +106,10 @@ import {
   resolveHeartbeatSenderContext,
 } from "./outbound/targets.js";
 import {
+  loadPendingSessionDeliveries,
+  type QueuedSessionDelivery,
+} from "./session-delivery-queue.js";
+import {
   consumeSystemEventEntries,
   peekSystemEventEntries,
   resolveSystemEventDeliveryContext,
@@ -116,6 +120,7 @@ export type HeartbeatDeps = OutboundSendDeps &
     getReplyFromConfig?: typeof import("./heartbeat-runner.runtime.js").getReplyFromConfig;
     runtime?: RuntimeEnv;
     getQueueSize?: (lane?: string) => number;
+    loadPendingSessionDeliveries?: () => Promise<QueuedSessionDelivery[]>;
     nowMs?: () => number;
   };
 
@@ -548,6 +553,13 @@ function resolveHeartbeatReasonFlags(reason?: string): HeartbeatReasonFlags {
   };
 }
 
+function hasPendingAgentTurnDeliveryForSession(
+  entries: QueuedSessionDelivery[],
+  sessionKey: string,
+): boolean {
+  return entries.some((entry) => entry.kind === "agentTurn" && entry.sessionKey === sessionKey);
+}
+
 async function resolveHeartbeatPreflight(params: {
   cfg: OpenClawConfig;
   agentId: string;
@@ -777,6 +789,18 @@ export async function runHeartbeatOnce(opts: {
     return { status: "skipped", reason: preflight.skipReason };
   }
   const { entry, sessionKey, storePath, suppressOriginatingContext } = preflight.session;
+
+  const pendingSessionDeliveries = await (
+    opts.deps?.loadPendingSessionDeliveries ?? loadPendingSessionDeliveries
+  )();
+  if (hasPendingAgentTurnDeliveryForSession(pendingSessionDeliveries, sessionKey)) {
+    emitHeartbeatEvent({
+      status: "skipped",
+      reason: "requests-in-flight",
+      durationMs: Date.now() - startedAt,
+    });
+    return { status: "skipped", reason: "requests-in-flight" };
+  }
 
   // Check the resolved session lane — if it is busy, skip to avoid interrupting
   // an active streaming turn.  The wake-layer retry (heartbeat-wake.ts) will
