@@ -450,6 +450,100 @@ describe("gateway server hooks", () => {
     });
   });
 
+  test("routes mapped wake agent routing to global in global session scope", async () => {
+    testState.sessionConfig = { scope: "global" };
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      mappings: [
+        {
+          match: { path: "mapped-wake-agent-global" },
+          action: "wake",
+          agentId: "hooks",
+          textTemplate: "Mapped agent wake: {{payload.subject}}",
+        },
+      ],
+    };
+    setMainAndHooksAgents();
+
+    await withGatewayServer(async ({ port }) => {
+      const mapped = await postHook(port, "/hooks/mapped-wake-agent-global", {
+        subject: "Email",
+      });
+      expect(mapped.status).toBe(200);
+      await expect
+        .poll(() => peekSystemEventEntries("global"), {
+          timeout: 5_000,
+          interval: 10,
+        })
+        .toEqual([
+          expect.objectContaining({
+            text: "Mapped agent wake: Email",
+            trusted: false,
+          }),
+        ]);
+      expect(peekSystemEventEntries("agent:hooks:main")).toEqual([]);
+      expect(peekSystemEventEntries(resolveMainKey())).toEqual([
+        expect.objectContaining({
+          text: "Mapped agent wake: Email",
+          trusted: false,
+        }),
+      ]);
+      drainSystemEvents("global");
+    });
+  });
+
+  test("rejects explicit wake session keys that cannot be drained in global session scope", async () => {
+    testState.sessionConfig = { scope: "global" };
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionKey: true,
+    };
+
+    await withGatewayServer(async ({ port }) => {
+      const denied = await postHook(port, "/hooks/wake", {
+        text: "Direct custom wake",
+        sessionKey: "hook:wake:custom",
+      });
+      expect(denied.status).toBe(400);
+      const body = (await denied.json()) as { error?: string };
+      expect(body.error).toContain("session.scope=global");
+      expect(peekSystemEventEntries("global")).toEqual([]);
+      expect(peekSystemEventEntries("agent:main:hook:wake:custom")).toEqual([]);
+    });
+  });
+
+  test("rejects mapped explicit wake session keys that cannot be drained in global session scope", async () => {
+    testState.sessionConfig = { scope: "global" };
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionKey: true,
+      mappings: [
+        {
+          match: { path: "mapped-wake-explicit-global-denied" },
+          action: "wake",
+          agentId: "hooks",
+          sessionKey: "hook:mapped:custom",
+          textTemplate: "Mapped explicit wake: {{payload.subject}}",
+        },
+      ],
+    };
+    setMainAndHooksAgents();
+
+    await withGatewayServer(async ({ port }) => {
+      const denied = await postHook(port, "/hooks/mapped-wake-explicit-global-denied", {
+        subject: "Email",
+      });
+      expect(denied.status).toBe(400);
+      const body = (await denied.json()) as { error?: string };
+      expect(body.error).toContain("session.scope=global");
+      expect(peekSystemEventEntries("global")).toEqual([]);
+      expect(peekSystemEventEntries("agent:hooks:hook:mapped:custom")).toEqual([]);
+    });
+  });
+
   test("rejects request sessionKey unless hooks.allowRequestSessionKey is enabled", async () => {
     testState.hooksConfig = { enabled: true, token: HOOK_TOKEN };
     await withGatewayServer(async ({ port }) => {

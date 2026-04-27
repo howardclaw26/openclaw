@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { sanitizeInboundSystemTags } from "../../auto-reply/reply/inbound-text.js";
 import type { CliDeps } from "../../cli/deps.types.js";
+import { loadConfig } from "../../config/config.js";
 import { getRuntimeConfig } from "../../config/io.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
 import type { CronJob } from "../../cron/types.js";
@@ -29,7 +30,11 @@ export function createGatewayHooksRequestHandler(params: {
     mode: "now" | "next-heartbeat";
     sessionKey?: string;
   }) => {
-    const requestedSessionKey = value.sessionKey || resolveMainSessionKeyFromConfig();
+    const cfg = loadConfig();
+    const requestedSessionKey =
+      cfg.session?.scope === "global"
+        ? "global"
+        : value.sessionKey || resolveMainSessionKeyFromConfig();
     const { canonicalKey: sessionKey } = loadSessionEntry(requestedSessionKey);
     enqueueSystemEvent(value.text, { sessionKey, trusted: false });
     if (value.mode === "now") {
