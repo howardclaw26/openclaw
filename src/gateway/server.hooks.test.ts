@@ -493,6 +493,63 @@ describe("gateway server hooks", () => {
     });
   });
 
+  test("allows global wake routing when prefix policy omits literal global", async () => {
+    testState.sessionConfig = { scope: "global" };
+    testState.hooksConfig = {
+      enabled: true,
+      token: HOOK_TOKEN,
+      allowRequestSessionKey: true,
+      allowedSessionKeyPrefixes: ["hook:", "agent:hooks:"],
+      mappings: [
+        {
+          match: { path: "mapped-wake-agent-global-prefix" },
+          action: "wake",
+          agentId: "hooks",
+          textTemplate: "Mapped agent wake: {{payload.subject}}",
+        },
+        {
+          match: { path: "mapped-wake-explicit-global-prefix" },
+          action: "wake",
+          agentId: "hooks",
+          sessionKey: "global",
+          textTemplate: "Mapped explicit wake: {{payload.subject}}",
+        },
+      ],
+    };
+    setMainAndHooksAgents();
+
+    await withGatewayServer(async ({ port }) => {
+      const direct = await postHook(port, "/hooks/wake", {
+        text: "Direct global wake",
+        sessionKey: "global",
+      });
+      expect(direct.status).toBe(200);
+
+      const mappedAgent = await postHook(port, "/hooks/mapped-wake-agent-global-prefix", {
+        subject: "Email",
+      });
+      expect(mappedAgent.status).toBe(200);
+
+      const mappedExplicit = await postHook(port, "/hooks/mapped-wake-explicit-global-prefix", {
+        subject: "Email",
+      });
+      expect(mappedExplicit.status).toBe(200);
+
+      await expect
+        .poll(() => peekSystemEventEntries("global"), {
+          timeout: 5_000,
+          interval: 10,
+        })
+        .toEqual([
+          expect.objectContaining({ text: "Direct global wake", trusted: false }),
+          expect.objectContaining({ text: "Mapped agent wake: Email", trusted: false }),
+          expect.objectContaining({ text: "Mapped explicit wake: Email", trusted: false }),
+        ]);
+      expect(peekSystemEventEntries("agent:hooks:main")).toEqual([]);
+      drainSystemEvents("global");
+    });
+  });
+
   test("rejects explicit wake session keys that cannot be drained in global session scope", async () => {
     testState.sessionConfig = { scope: "global" };
     testState.hooksConfig = {

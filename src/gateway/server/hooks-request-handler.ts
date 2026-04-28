@@ -47,6 +47,10 @@ function getGlobalWakeSessionKeyError(): string {
   return "wake hook sessionKey must be `global` or omitted when session.scope=global";
 }
 
+function shouldApplyWakeSessionKeyPrefix(sessionKey: string): boolean {
+  return !(isGlobalSessionScope() && sessionKey === "global");
+}
+
 export type HookClientIpConfig = Readonly<{
   trustedProxies?: string[];
   allowRealIpFallback?: boolean;
@@ -276,6 +280,7 @@ export function createHooksRequestHandler(
           hooksConfig,
           source: "request",
           sessionKey: normalized.value.sessionKey,
+          allowGlobalSessionKey: isGlobalSessionScope(),
         });
         if (!wakeSessionKey.ok) {
           sendJson(res, 400, { ok: false, error: wakeSessionKey.error });
@@ -396,15 +401,19 @@ export function createHooksRequestHandler(
                     ? "mapping-static"
                     : "mapping-templated",
                 sessionKey: mapped.action.sessionKey,
+                allowGlobalSessionKey: isGlobalSessionScope(),
               });
               if (!wakeSessionKey.ok) {
                 sendJson(res, 400, { ok: false, error: wakeSessionKey.error });
                 return true;
               }
-              normalizedWakeSessionKey = normalizeHookDispatchSessionKey({
-                sessionKey: wakeSessionKey.value,
-                targetAgentId,
-              });
+              normalizedWakeSessionKey =
+                isGlobalSessionScope() && wakeSessionKey.value === "global"
+                  ? "global"
+                  : normalizeHookDispatchSessionKey({
+                      sessionKey: wakeSessionKey.value,
+                      targetAgentId,
+                    });
               if (isGlobalSessionScope() && normalizedWakeSessionKey !== "global") {
                 sendJson(res, 400, { ok: false, error: getGlobalWakeSessionKeyError() });
                 return true;
@@ -412,6 +421,7 @@ export function createHooksRequestHandler(
               const allowedPrefixes = hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
               if (
                 allowedPrefixes &&
+                shouldApplyWakeSessionKeyPrefix(normalizedWakeSessionKey) &&
                 !isSessionKeyAllowedByPrefix(normalizedWakeSessionKey, allowedPrefixes)
               ) {
                 sendJson(res, 400, {
@@ -430,6 +440,7 @@ export function createHooksRequestHandler(
               const allowedPrefixes = hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
               if (
                 allowedPrefixes &&
+                shouldApplyWakeSessionKeyPrefix(normalizedWakeSessionKey) &&
                 !isSessionKeyAllowedByPrefix(normalizedWakeSessionKey, allowedPrefixes)
               ) {
                 sendJson(res, 400, {

@@ -337,6 +337,7 @@ export function resolveHookSessionKey(params: {
   source: HookSessionKeySource;
   sessionKey?: string;
   idFactory?: () => string;
+  allowGlobalSessionKey?: boolean;
 }): { ok: true; value: string } | { ok: false; error: string } {
   const requested = resolveSessionKey(params.sessionKey);
   if (requested) {
@@ -347,7 +348,11 @@ export function resolveHookSessionKey(params: {
       return { ok: false, error: getHookSessionKeyRequestPolicyError() };
     }
     const allowedPrefixes = params.hooksConfig.sessionPolicy.allowedSessionKeyPrefixes;
-    if (allowedPrefixes && !isSessionKeyAllowedByPrefix(requested, allowedPrefixes)) {
+    if (
+      allowedPrefixes &&
+      !(params.allowGlobalSessionKey && requested === "global") &&
+      !isSessionKeyAllowedByPrefix(requested, allowedPrefixes)
+    ) {
       return { ok: false, error: getHookSessionKeyPrefixError(allowedPrefixes) };
     }
     return { ok: true, value: requested };
